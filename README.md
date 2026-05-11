@@ -200,17 +200,17 @@ ufinder -d example.com -f example_recon -q -j
 ```text
 output_directory/
 └── endpoints/
-    ├── urls.txt
-    ├── js.txt
-    ├── waymore.txt
-    ├── waybackurls.txt
-    ├── gau.txt
-    ├── gau_subs.txt
-    ├── xurlfind3r.txt
-    ├── urlscan.txt
-    ├── urlfinder.txt
-    ├── ducker.txt
-    └── last_results.txt
+    ├── urls.txt                # Master file with all unique URLs
+    ├── js.txt                  # JavaScript URLs extracted from urls.txt
+    ├── waymore.txt             # URLs found by waymore
+    ├── waybackurls.txt         # URLs found by waybackurls
+    ├── gau.txt                 # URLs found by gau
+    ├── gau_subs.txt            # URLs found by gau --subs
+    ├── xurlfind3r.txt          # URLs found by xurlfind3r
+    ├── urlscan.txt             # URLs found by urlscan
+    ├── urlfinder.txt           # URLs found by urlfinder
+    ├── ducker.txt              # URLs found by ducker
+    └── last_results.txt        # New URLs found in the latest run
 ```
 
 ### Target list
@@ -230,22 +230,22 @@ batch_output/
 ```text
 output_directory/
 └── endpoints/
-    ├── urls.txt
-    ├── js.txt
-    ├── waymore.txt
-    ├── waybackurls.txt
-    ├── gau.txt
-    ├── gau_subs.txt
-    ├── xurlfind3r.txt
-    ├── urlscan.txt
-    ├── urlfinder.txt
-    ├── ducker.txt
-    └── last_results.txt
+    ├── urls.txt                # Master file with all unique URLs
+    ├── js.txt                  # JavaScript URLs extracted from urls.txt
+    ├── waymore.txt             # URLs found by waymore
+    ├── waybackurls.txt         # URLs found by waybackurls
+    ├── gau.txt                 # URLs found by gau
+    ├── gau_subs.txt            # URLs found by gau --subs
+    ├── xurlfind3r.txt          # URLs found by xurlfind3r
+    ├── urlscan.txt             # URLs found by urlscan
+    ├── urlfinder.txt           # URLs found by urlfinder
+    ├── ducker.txt              # URLs found by ducker
+    └── last_results.txt        # New URLs found in the latest run
 ```
 
 ## Environment Variables
 
-Set your URLScan API key before running `urlscan`:
+For URLScan.io integration, set your API key before running `urlscan`:
 
 ```bash
 export URLSCAN="your_urlscan_api_key"
@@ -253,8 +253,19 @@ export URLSCAN="your_urlscan_api_key"
 
 ## Contributing
 
-Contributions are welcome through pull requests.
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
 ## License
 
 This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
+
+## Acknowledgments
+
+- Created by Gilson Oliveira
+- Thanks to the developers of all integrated tools
