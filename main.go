@@ -285,15 +285,18 @@ func aggregateAndClean(toolFiles map[string]string, urlsFile string, oldGlobalCo
 	fmt.Println("")
 }
 
-func extractJSURLs(urlsFile string) int {
+func extractJSURLs(urlsFile string) (int, int) {
 	if !fileExists(urlsFile) {
-		return 0
+		return 0, 0
 	}
 
 	content, err := os.ReadFile(urlsFile)
 	if err != nil {
-		return 0
+		return 0, 0
 	}
+
+	jsFile := filepath.Join(filepath.Dir(urlsFile), "js.txt")
+	prevCount := countLines(jsFile)
 
 	jsSet := make(map[string]bool)
 	for _, line := range strings.Split(string(content), "\n") {
@@ -312,14 +315,19 @@ func extractJSURLs(urlsFile string) int {
 	}
 	sort.Strings(jsURLs)
 
-	jsFile := filepath.Join(filepath.Dir(urlsFile), "js.txt")
 	if len(jsURLs) > 0 {
 		os.WriteFile(jsFile, []byte(strings.Join(jsURLs, "\n")+"\n"), 0644)
 	} else {
 		os.WriteFile(jsFile, []byte{}, 0644)
 	}
 
-	return len(jsURLs)
+	currentCount := len(jsURLs)
+	newCount := currentCount - prevCount
+	if newCount < 0 {
+		newCount = 0
+	}
+
+	return currentCount, newCount
 }
 
 func sanitizeTargetName(target string) string {
@@ -438,8 +446,23 @@ func discovery(domain, folderName string, toolsArg string, verbose bool, quiet b
 
 	aggregateAndClean(toolFiles, urlsFile, oldGlobalCount, quiet)
 	if extractJS {
-		jsCount := extractJSURLs(urlsFile)
-		fmt.Printf(" %s %s  %s\n", iconCheck, colorTool(fmt.Sprintf("%-12s", "JS")), colorTime(fmt.Sprintf("%8d urls", jsCount)))
+		jsCount, newJSCount := extractJSURLs(urlsFile)
+		jsLabel := fmt.Sprintf("%-12s", "JS")
+		totalLabel := fmt.Sprintf("%8d urls", jsCount)
+
+		var newLabel string
+		if newJSCount > 0 {
+			newLabel = colorNew(fmt.Sprintf("+%d new", newJSCount))
+		} else {
+			newLabel = colorZero("0 new")
+		}
+
+		fmt.Printf(" %s %s  %s  %s\n",
+			iconCheck,
+			colorTool(jsLabel),
+			totalLabel,
+			newLabel,
+		)
 	}
 }
 
