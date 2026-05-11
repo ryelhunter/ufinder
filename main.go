@@ -66,6 +66,12 @@ func printHeader(domain, folder string) {
 	fmt.Println("")
 }
 
+func printTargetSeparator() {
+	fmt.Println("")
+	fmt.Println(color.HiBlackString(strings.Repeat("=", 60)))
+	fmt.Println("")
+}
+
 // --- HELPERS LÓGICOS ---
 
 func fileExists(filePath string) bool {
@@ -446,6 +452,9 @@ func discovery(domain, folderName string, toolsArg string, verbose bool, quiet b
 
 	aggregateAndClean(toolFiles, urlsFile, oldGlobalCount, quiet)
 	if extractJS {
+		fmt.Println(color.HiCyanString("┌──────────────────────────────────────────────┐"))
+		fmt.Printf("│  %s                   │\n", color.HiWhiteString("JAVASCRIPT EXTRACTION"))
+		fmt.Println(color.HiCyanString("└──────────────────────────────────────────────┘"))
 		jsCount, newJSCount := extractJSURLs(urlsFile)
 		jsLabel := fmt.Sprintf("%-12s", "JS")
 		totalLabel := fmt.Sprintf("%8d urls", jsCount)
@@ -463,13 +472,14 @@ func discovery(domain, folderName string, toolsArg string, verbose bool, quiet b
 			totalLabel,
 			newLabel,
 		)
+		fmt.Println("")
 	}
 }
 
 func runDiscovery(targets []string, baseFolder, toolsArg string, verbose bool, quiet bool, extractJS bool, splitPerTarget bool) {
 	usedFolders := make(map[string]int)
 
-	for _, target := range targets {
+	for index, target := range targets {
 		outputFolder := baseFolder
 		if splitPerTarget {
 			baseName := sanitizeTargetName(target)
@@ -479,6 +489,10 @@ func runDiscovery(targets []string, baseFolder, toolsArg string, verbose bool, q
 			}
 			usedFolders[baseName]++
 			outputFolder = filepath.Join(baseFolder, folderName)
+		}
+
+		if index > 0 {
+			printTargetSeparator()
 		}
 		discovery(target, outputFolder, toolsArg, verbose, quiet, extractJS)
 	}
