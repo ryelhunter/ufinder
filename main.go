@@ -59,8 +59,13 @@ func printBanner() {
 	fmt.Println("")
 }
 
-func printHeader(domain, folder string) {
-	fmt.Printf("   %s Target: %s\n", iconFire, color.HiWhiteString(domain))
+func printHeader(domain, folder string, currentTarget int, totalTargets int) {
+	targetLine := domain
+	if totalTargets > 0 {
+		targetLine = fmt.Sprintf("[%d/%d] %s", currentTarget, totalTargets, domain)
+	}
+
+	fmt.Printf("   %s Target: %s\n", iconFire, color.HiWhiteString(targetLine))
 	fmt.Printf("   %s Output: %s\n", iconBox, color.HiWhiteString(folder))
 	fmt.Println(strings.Repeat(color.HiBlackString("─"), 60))
 	fmt.Println("")
@@ -513,14 +518,14 @@ func selectTools(toolsArg string) []string {
 	return strings.Split(toolsArg, ",")
 }
 
-func discovery(domain, folderName string, toolsArg string, verbose bool, quiet bool, extractJS bool, extractUnique bool) {
+func discovery(domain, folderName string, toolsArg string, verbose bool, quiet bool, extractJS bool, extractUnique bool, currentTarget int, totalTargets int) {
 	baseDir := folderName
 	endpointsDir := filepath.Join(baseDir, "endpoints")
 	os.MkdirAll(endpointsDir, 0755)
 	urlsFile := filepath.Join(endpointsDir, "urls.txt")
 	oldGlobalCount := countLines(urlsFile)
 
-	printHeader(domain, folderName)
+	printHeader(domain, folderName, currentTarget, totalTargets)
 
 	toolFiles := buildToolFiles(endpointsDir)
 	toolCommands := buildToolCommands(domain, toolFiles)
@@ -609,7 +614,13 @@ func runDiscovery(targets []string, baseFolder, toolsArg string, verbose bool, q
 		if index > 0 {
 			printTargetSeparator()
 		}
-		discovery(target, outputFolder, toolsArg, verbose, quiet, extractJS, extractUnique)
+		currentTarget := 0
+		totalTargets := 0
+		if len(targets) > 1 {
+			currentTarget = index + 1
+			totalTargets = len(targets)
+		}
+		discovery(target, outputFolder, toolsArg, verbose, quiet, extractJS, extractUnique, currentTarget, totalTargets)
 	}
 }
 
