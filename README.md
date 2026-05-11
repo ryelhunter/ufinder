@@ -1,6 +1,6 @@
 # UFinder
 
-UFinder is a Go-based URL discovery and aggregation tool for security researchers and bug bounty hunters. It orchestrates multiple URL collection tools, stores each tool output separately, and keeps a deduplicated master list for incremental recon runs.
+UFinder is a powerful Go-based URL discovery and aggregation tool designed for security researchers and bug bounty hunters. It combines and orchestrates multiple URL discovery tools to find web endpoints efficiently, eliminate duplicates, and provide a comprehensive view of a target's attack surface.
 
 ## Features
 
@@ -26,9 +26,9 @@ UFinder is a Go-based URL discovery and aggregation tool for security researcher
 ## Requirements
 
 - Go 1.16+
+- The integrated tools (`waymore`, `waybackurls`, `gau`, `xurlfind3r`, `urlfinder`)
 - Python 3.x
-- `jq`
-- The integrated Go and Python tools listed below
+- `jq` (for URLScan results processing)
 
 ## Installation
 
@@ -155,7 +155,7 @@ ufinder -d example.com -f example_recon
 Run selected tools only:
 
 ```bash
-ufinder -d example.com -f example_recon -t gau,gau_subs,urlscan
+ufinder -d example.com -f example_recon -t waymore,gau,gau_subs,urlscan
 ```
 
 Run a batch from a text file:
