@@ -83,6 +83,15 @@ func printSectionBox(title string) {
 	fmt.Println(color.HiCyanString("└──────────────────────────────────────────────┘"))
 }
 
+func printElapsedBox(title string, elapsed time.Duration) {
+	fmt.Println(color.HiBlackString("┌──────────────────────────────────────────────┐"))
+	fmt.Printf("│  %s%s│\n", color.HiWhiteString(title), strings.Repeat(" ", 42-len(title)))
+	fmt.Println(color.HiBlackString("├──────────────────────────────────────────────┤"))
+	fmt.Printf("│  Elapsed Time       : %-22s │\n", elapsed.Round(time.Second))
+	fmt.Println(color.HiBlackString("└──────────────────────────────────────────────┘"))
+	fmt.Println("")
+}
+
 // --- HELPERS LÓGICOS ---
 
 func fileExists(filePath string) bool {
@@ -725,8 +734,10 @@ func discovery(domain, folderName string, toolsArg string, verbose bool, quiet b
 
 func runDiscovery(targets []string, baseFolder, toolsArg string, verbose bool, quiet bool, extractJS bool, extractUnique bool, extractSubdomainsEnabled bool, splitPerTarget bool) {
 	usedFolders := make(map[string]int)
+	totalStart := time.Now()
 
 	for index, target := range targets {
+		targetStart := time.Now()
 		outputFolder := baseFolder
 		if splitPerTarget {
 			baseName := sanitizeTargetName(target)
@@ -748,6 +759,14 @@ func runDiscovery(targets []string, baseFolder, toolsArg string, verbose bool, q
 			totalTargets = len(targets)
 		}
 		discovery(target, outputFolder, toolsArg, verbose, quiet, extractJS, extractUnique, extractSubdomainsEnabled, targets, currentTarget, totalTargets)
+
+		if len(targets) > 1 {
+			printElapsedBox(fmt.Sprintf("TARGET COMPLETED [%d/%d]", currentTarget, totalTargets), time.Since(targetStart))
+		}
+	}
+
+	if len(targets) > 1 {
+		printElapsedBox("TOTAL EXECUTION TIME", time.Since(totalStart))
 	}
 }
 
