@@ -133,16 +133,16 @@ ufinder -l targets.txt -f batch_output
 
 | Flag | Description |
 |------|-------------|
-| `-d` | Single target domain |
-| `-l` | Text file containing one target per line |
-| `-f` | Output folder |
+| `-d`, `--domain` | Single target domain |
+| `-l`, `--list` | Text file containing one target per line |
+| `-f`, `--output` | Output folder |
 | `-m`, `--merge-targets` | When using `-l`, write all targets into the same output folder |
-| `-t` | Comma-separated tool list, for example `waymore,gau,gau_subs,urlscan` |
+| `-t`, `--tools` | Comma-separated tool list, for example `waymore,gau,gau_subs,urlscan` |
 | `-s`, `--extract-subdomains` | Extract discovered subdomains into `subdomains.txt` and newly discovered ones into `subdomains_new.txt` |
 | `-u`, `--extract-normalized-urls` | Extract normalized unique URLs into `urls_unique.txt` |
 | `-j`, `--extract-js` | Extract JavaScript URLs into `js.txt` and normalized entries into `js_unique.txt` |
 | `-q`, `--quiet` | Hide the banner and the final per-URL list of new findings |
-| `-v` | Verbose mode |
+| `-v`, `--verbose` | Verbose mode |
 
 Use either `-d` or `-l`.
 

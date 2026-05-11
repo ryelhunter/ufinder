@@ -765,11 +765,15 @@ func init() {
 
 func main() {
 	domain := flag.String("d", "", "Target domain")
+	domainLong := flag.String("domain", "", "Target domain")
 	listFile := flag.String("l", "", "File with targets, one per line")
+	listFileLong := flag.String("list", "", "File with targets, one per line")
 	folderName := flag.String("f", "", "Output folder")
+	folderNameLong := flag.String("output", "", "Output folder")
 	mergeTargets := flag.Bool("merge-targets", false, "Merge all targets from -l into the same output folder")
 	mergeTargetsShort := flag.Bool("m", false, "Merge all targets from -l into the same output folder")
 	toolsArg := flag.String("t", "", "Tools list")
+	toolsArgLong := flag.String("tools", "", "Tools list")
 	extractSubdomains := flag.Bool("extract-subdomains", false, "Extract subdomains into subdomains.txt and newly discovered ones into subdomains_new.txt")
 	extractSubdomainsShort := flag.Bool("s", false, "Extract subdomains into subdomains.txt and newly discovered ones into subdomains_new.txt")
 	extractUnique := flag.Bool("extract-normalized-urls", false, "Extract normalized unique URLs into urls_unique.txt")
@@ -779,15 +783,33 @@ func main() {
 	quiet := flag.Bool("quiet", false, "Quiet mode")
 	quietShort := flag.Bool("q", false, "Quiet mode")
 	verbose := flag.Bool("v", false, "Verbose mode")
+	verboseLong := flag.Bool("verbose", false, "Verbose mode")
 	flag.Parse()
 
+	domainValue := *domain
+	if domainValue == "" {
+		domainValue = *domainLong
+	}
+	listFileValue := *listFile
+	if listFileValue == "" {
+		listFileValue = *listFileLong
+	}
+	folderNameValue := *folderName
+	if folderNameValue == "" {
+		folderNameValue = *folderNameLong
+	}
+	toolsArgValue := *toolsArg
+	if toolsArgValue == "" {
+		toolsArgValue = *toolsArgLong
+	}
 	mergeTargetsEnabled := *mergeTargets || *mergeTargetsShort
 	extractSubdomainsEnabled := *extractSubdomains || *extractSubdomainsShort
 	extractUniqueEnabled := *extractUnique || *extractUniqueShort
 	extractJSEnabled := *extractJS || *extractJSShort
 	quietEnabled := *quiet || *quietShort
+	verboseEnabled := *verbose || *verboseLong
 
-	if *folderName == "" || (*domain == "" && *listFile == "") || (*domain != "" && *listFile != "") {
+	if folderNameValue == "" || (domainValue == "" && listFileValue == "") || (domainValue != "" && listFileValue != "") {
 		// Mensagem de erro mais bonita
 		fmt.Println("")
 		color.Red("  ✖ Error: Invalid arguments.")
@@ -801,8 +823,8 @@ func main() {
 		printBanner()
 	}
 
-	if *listFile != "" {
-		targets, err := loadTargetsFromFile(*listFile)
+	if listFileValue != "" {
+		targets, err := loadTargetsFromFile(listFileValue)
 		if err != nil {
 			color.Red("  ✖ Error reading target list: %v", err)
 			os.Exit(1)
@@ -811,9 +833,9 @@ func main() {
 			color.Red("  ✖ Error: target list is empty.")
 			os.Exit(1)
 		}
-		runDiscovery(targets, *folderName, *toolsArg, *verbose, quietEnabled, extractJSEnabled, extractUniqueEnabled, extractSubdomainsEnabled, !mergeTargetsEnabled)
+		runDiscovery(targets, folderNameValue, toolsArgValue, verboseEnabled, quietEnabled, extractJSEnabled, extractUniqueEnabled, extractSubdomainsEnabled, !mergeTargetsEnabled)
 		return
 	}
 
-	runDiscovery([]string{*domain}, *folderName, *toolsArg, *verbose, quietEnabled, extractJSEnabled, extractUniqueEnabled, extractSubdomainsEnabled, false)
+	runDiscovery([]string{domainValue}, folderNameValue, toolsArgValue, verboseEnabled, quietEnabled, extractJSEnabled, extractUniqueEnabled, extractSubdomainsEnabled, false)
 }
