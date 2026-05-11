@@ -72,6 +72,12 @@ func printTargetSeparator() {
 	fmt.Println("")
 }
 
+func printSectionBox(title string) {
+	fmt.Println(color.HiCyanString("┌──────────────────────────────────────────────┐"))
+	fmt.Printf("│  %s%s│\n", color.HiWhiteString(title), strings.Repeat(" ", 42-len(title)))
+	fmt.Println(color.HiCyanString("└──────────────────────────────────────────────┘"))
+}
+
 // --- HELPERS LÓGICOS ---
 
 func fileExists(filePath string) bool {
@@ -108,6 +114,26 @@ func normalizeJSURL(rawURL string) (string, bool) {
 	parsed.RawQuery = ""
 	parsed.Fragment = ""
 	return parsed.String(), true
+}
+
+func normalizeUniqueURL(rawURL string) (string, bool) {
+	parsed, err := url.Parse(rawURL)
+	if err != nil || parsed.Host == "" {
+		return "", false
+	}
+
+	host := strings.ToLower(parsed.Hostname())
+	port := parsed.Port()
+	if port != "" && port != "80" && port != "443" {
+		host = host + ":" + port
+	}
+
+	path := parsed.EscapedPath()
+	if path == "" {
+		path = "/"
+	}
+
+	return host + path, true
 }
 
 func countLines(filePath string) int {
@@ -368,6 +394,51 @@ func extractJSURLs(urlsFile string) (int, int) {
 	return currentCount, newCount
 }
 
+func extractUniqueURLs(urlsFile string) (int, int) {
+	if !fileExists(urlsFile) {
+		return 0, 0
+	}
+
+	content, err := os.ReadFile(urlsFile)
+	if err != nil {
+		return 0, 0
+	}
+
+	uniqueFile := filepath.Join(filepath.Dir(urlsFile), "urls_unique.txt")
+	prevCount := countLines(uniqueFile)
+
+	uniqueSet := make(map[string]bool)
+	for _, line := range strings.Split(string(content), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if normalized, ok := normalizeUniqueURL(line); ok {
+			uniqueSet[normalized] = true
+		}
+	}
+
+	var uniqueURLs []string
+	for normalizedURL := range uniqueSet {
+		uniqueURLs = append(uniqueURLs, normalizedURL)
+	}
+	sort.Strings(uniqueURLs)
+
+	if len(uniqueURLs) > 0 {
+		os.WriteFile(uniqueFile, []byte(strings.Join(uniqueURLs, "\n")+"\n"), 0644)
+	} else {
+		os.WriteFile(uniqueFile, []byte{}, 0644)
+	}
+
+	currentCount := len(uniqueURLs)
+	newCount := currentCount - prevCount
+	if newCount < 0 {
+		newCount = 0
+	}
+
+	return currentCount, newCount
+}
+
 func sanitizeTargetName(target string) string {
 	replacer := strings.NewReplacer(
 		"/", "_",
@@ -449,7 +520,7 @@ func selectTools(toolsArg string) []string {
 	return strings.Split(toolsArg, ",")
 }
 
-func discovery(domain, folderName string, toolsArg string, verbose bool, quiet bool, extractJS bool) {
+func discovery(domain, folderName string, toolsArg string, verbose bool, quiet bool, extractJS bool, extractUnique bool) {
 	baseDir := folderName
 	endpointsDir := filepath.Join(baseDir, "endpoints")
 	os.MkdirAll(endpointsDir, 0755)
@@ -483,10 +554,29 @@ func discovery(domain, folderName string, toolsArg string, verbose bool, quiet b
 	wg.Wait()
 
 	aggregateAndClean(toolFiles, urlsFile, oldGlobalCount, quiet)
+	if extractUnique {
+		printSectionBox("URL NORMALIZATION")
+		uniqueCount, newUniqueCount := extractUniqueURLs(urlsFile)
+		uniqueLabel := fmt.Sprintf("%-12s", "URLS UNIQUE")
+		totalLabel := fmt.Sprintf("%8d urls", uniqueCount)
+
+		var newLabel string
+		if newUniqueCount > 0 {
+			newLabel = colorNew(fmt.Sprintf("+%d new", newUniqueCount))
+		} else {
+			newLabel = colorZero("0 new")
+		}
+
+		fmt.Printf(" %s %s  %s  %s\n",
+			iconCheck,
+			colorTool(uniqueLabel),
+			totalLabel,
+			newLabel,
+		)
+		fmt.Println("")
+	}
 	if extractJS {
-		fmt.Println(color.HiCyanString("┌──────────────────────────────────────────────┐"))
-		fmt.Printf("│  %s                   │\n", color.HiWhiteString("JAVASCRIPT EXTRACTION"))
-		fmt.Println(color.HiCyanString("└──────────────────────────────────────────────┘"))
+		printSectionBox("JAVASCRIPT EXTRACTION")
 		jsCount, newJSCount := extractJSURLs(urlsFile)
 		jsLabel := fmt.Sprintf("%-12s", "JS UNIQUE")
 		totalLabel := fmt.Sprintf("%8d urls", jsCount)
@@ -508,7 +598,7 @@ func discovery(domain, folderName string, toolsArg string, verbose bool, quiet b
 	}
 }
 
-func runDiscovery(targets []string, baseFolder, toolsArg string, verbose bool, quiet bool, extractJS bool, splitPerTarget bool) {
+func runDiscovery(targets []string, baseFolder, toolsArg string, verbose bool, quiet bool, extractJS bool, extractUnique bool, splitPerTarget bool) {
 	usedFolders := make(map[string]int)
 
 	for index, target := range targets {
@@ -526,7 +616,7 @@ func runDiscovery(targets []string, baseFolder, toolsArg string, verbose bool, q
 		if index > 0 {
 			printTargetSeparator()
 		}
-		discovery(target, outputFolder, toolsArg, verbose, quiet, extractJS)
+		discovery(target, outputFolder, toolsArg, verbose, quiet, extractJS, extractUnique)
 	}
 }
 
@@ -549,14 +639,17 @@ func main() {
 	mergeTargets := flag.Bool("merge-targets", false, "Merge all targets from -l into the same output folder")
 	mergeTargetsShort := flag.Bool("m", false, "Merge all targets from -l into the same output folder")
 	toolsArg := flag.String("t", "", "Tools list")
-	extractJS := flag.Bool("extract-js", false, "Extract JavaScript URLs into js.txt")
-	extractJSShort := flag.Bool("j", false, "Extract JavaScript URLs into js.txt")
+	extractUnique := flag.Bool("extract-unique", false, "Extract normalized unique URLs into urls_unique.txt")
+	extractUniqueShort := flag.Bool("u", false, "Extract normalized unique URLs into urls_unique.txt")
+	extractJS := flag.Bool("extract-js", false, "Extract JavaScript URLs into js.txt and js_unique.txt")
+	extractJSShort := flag.Bool("j", false, "Extract JavaScript URLs into js.txt and js_unique.txt")
 	quiet := flag.Bool("quiet", false, "Quiet mode")
 	quietShort := flag.Bool("q", false, "Quiet mode")
 	verbose := flag.Bool("v", false, "Verbose mode")
 	flag.Parse()
 
 	mergeTargetsEnabled := *mergeTargets || *mergeTargetsShort
+	extractUniqueEnabled := *extractUnique || *extractUniqueShort
 	extractJSEnabled := *extractJS || *extractJSShort
 	quietEnabled := *quiet || *quietShort
 
@@ -584,9 +677,9 @@ func main() {
 			color.Red("  ✖ Error: target list is empty.")
 			os.Exit(1)
 		}
-		runDiscovery(targets, *folderName, *toolsArg, *verbose, quietEnabled, extractJSEnabled, !mergeTargetsEnabled)
+		runDiscovery(targets, *folderName, *toolsArg, *verbose, quietEnabled, extractJSEnabled, extractUniqueEnabled, !mergeTargetsEnabled)
 		return
 	}
 
-	runDiscovery([]string{*domain}, *folderName, *toolsArg, *verbose, quietEnabled, extractJSEnabled, false)
+	runDiscovery([]string{*domain}, *folderName, *toolsArg, *verbose, quietEnabled, extractJSEnabled, extractUniqueEnabled, false)
 }
