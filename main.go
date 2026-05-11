@@ -2,8 +2,10 @@
 package main
 
 import (
+	"bufio"
 	"flag"
 	"fmt"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -20,6 +22,17 @@ import (
 
 // CONFIGURAÇÃO
 const MaxConcurrentTools = 1
+
+var defaultToolsOrder = []string{
+	"waymore",
+	"waybackurls",
+	"gau",
+	"gau_subs",
+	"xurlfind3r",
+	"urlscan",
+	"urlfinder",
+	"ducker",
+}
 
 // --- HELPERS VISUAIS ---
 
@@ -63,11 +76,24 @@ func fileExists(filePath string) bool {
 	return !info.IsDir()
 }
 
+func shellEscape(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", `'\''`) + "'"
+}
+
+func isJSURL(rawURL string) bool {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return false
+	}
+
+	return strings.HasSuffix(strings.ToLower(parsed.Path), ".js")
+}
+
 func countLines(filePath string) int {
 	if !fileExists(filePath) {
 		return 0
 	}
-	out, err := exec.Command("sh", "-c", fmt.Sprintf("wc -l < %s", filePath)).Output()
+	out, err := exec.Command("sh", "-c", fmt.Sprintf("wc -l < %s", shellEscape(filePath))).Output()
 	if err != nil {
 		return 0
 	}
@@ -106,16 +132,16 @@ func runTool(command, toolName, outputFile string, verbose bool) {
 		runShellCommand(cmdWithTemp, verbose)
 
 		if fileExists(tempWaymore) {
-			runShellCommand(fmt.Sprintf("cat %s >> %s", tempWaymore, outputFile), verbose)
+			runShellCommand(fmt.Sprintf("cat %s >> %s", shellEscape(tempWaymore), shellEscape(outputFile)), verbose)
 			os.Remove(tempWaymore)
 		}
 	} else {
-		fullCommand := fmt.Sprintf("%s >> %s", command, outputFile)
+		fullCommand := fmt.Sprintf("%s >> %s", command, shellEscape(outputFile))
 		runShellCommand(fullCommand, verbose)
 	}
 
 	// Ordenação individual
-	sortCmd := fmt.Sprintf("sort -u %s -o %s", outputFile, outputFile)
+	sortCmd := fmt.Sprintf("sort -u %s -o %s", shellEscape(outputFile), shellEscape(outputFile))
 	runShellCommand(sortCmd, verbose)
 	// ---------------------------------------------
 
@@ -151,7 +177,7 @@ func runTool(command, toolName, outputFile string, verbose bool) {
 	)
 }
 
-func aggregateAndClean(toolFiles map[string]string, urlsFile string, oldGlobalCount int) {
+func aggregateAndClean(toolFiles map[string]string, urlsFile string, oldGlobalCount int, quiet bool) {
 	// Spinner para a agregação
 	fmt.Println("")
 	s := spinner.New(spinner.CharSets[11], 100*time.Millisecond)
@@ -187,9 +213,13 @@ func aggregateAndClean(toolFiles map[string]string, urlsFile string, oldGlobalCo
 	}
 
 	if len(filesToMerge) > 0 {
-		cmdCat := fmt.Sprintf("cat %s >> %s", strings.Join(filesToMerge, " "), rawCombined)
+		quotedFiles := make([]string, 0, len(filesToMerge))
+		for _, file := range filesToMerge {
+			quotedFiles = append(quotedFiles, shellEscape(file))
+		}
+		cmdCat := fmt.Sprintf("cat %s >> %s", strings.Join(quotedFiles, " "), shellEscape(rawCombined))
 		runShellCommand(cmdCat, false) // Agregação interna não precisa de verbose
-		cmdSort := fmt.Sprintf("sort -u %s -o %s", rawCombined, urlsFile)
+		cmdSort := fmt.Sprintf("sort -u %s -o %s", shellEscape(rawCombined), shellEscape(urlsFile))
 		runShellCommand(cmdSort, false)
 		os.Remove(rawCombined)
 	}
@@ -243,7 +273,7 @@ func aggregateAndClean(toolFiles map[string]string, urlsFile string, oldGlobalCo
 	fmt.Println(color.HiBlackString("└──────────────────────────────────────────────┘"))
 
 	// Mostrar as novas URLs no terminal (ordenadas ascending)
-	if len(newURLs) > 0 {
+	if len(newURLs) > 0 && !quiet {
 		fmt.Println("")
 		fmt.Println(color.HiCyanString("┌──────────────────────────────────────────────┐"))
 		fmt.Printf("│  %s                       │\n", color.HiWhiteString("NEW URLS FOUND"))
@@ -255,7 +285,125 @@ func aggregateAndClean(toolFiles map[string]string, urlsFile string, oldGlobalCo
 	fmt.Println("")
 }
 
-func discovery(domain, folderName string, toolsArg string, verbose bool) {
+func extractJSURLs(urlsFile string) int {
+	if !fileExists(urlsFile) {
+		return 0
+	}
+
+	content, err := os.ReadFile(urlsFile)
+	if err != nil {
+		return 0
+	}
+
+	jsSet := make(map[string]bool)
+	for _, line := range strings.Split(string(content), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if isJSURL(line) {
+			jsSet[line] = true
+		}
+	}
+
+	var jsURLs []string
+	for jsURL := range jsSet {
+		jsURLs = append(jsURLs, jsURL)
+	}
+	sort.Strings(jsURLs)
+
+	jsFile := filepath.Join(filepath.Dir(urlsFile), "js.txt")
+	if len(jsURLs) > 0 {
+		os.WriteFile(jsFile, []byte(strings.Join(jsURLs, "\n")+"\n"), 0644)
+	} else {
+		os.WriteFile(jsFile, []byte{}, 0644)
+	}
+
+	return len(jsURLs)
+}
+
+func sanitizeTargetName(target string) string {
+	replacer := strings.NewReplacer(
+		"/", "_",
+		"\\", "_",
+		":", "_",
+		" ", "_",
+		"\t", "_",
+	)
+	sanitized := strings.TrimSpace(replacer.Replace(target))
+	sanitized = strings.Trim(sanitized, "._-")
+	if sanitized == "" {
+		return "target"
+	}
+	return sanitized
+}
+
+func loadTargetsFromFile(filePath string) ([]string, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	var targets []string
+	seen := make(map[string]bool)
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		if !seen[line] {
+			targets = append(targets, line)
+			seen[line] = true
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+
+	return targets, nil
+}
+
+func buildToolFiles(endpointsDir string) map[string]string {
+	return map[string]string{
+		"waymore":     filepath.Join(endpointsDir, "waymore.txt"),
+		"waybackurls": filepath.Join(endpointsDir, "waybackurls.txt"),
+		"gau":         filepath.Join(endpointsDir, "gau.txt"),
+		"gau_subs":    filepath.Join(endpointsDir, "gau_subs.txt"),
+		"xurlfind3r":  filepath.Join(endpointsDir, "xurlfind3r.txt"),
+		"urlscan":     filepath.Join(endpointsDir, "urlscan.txt"),
+		"urlfinder":   filepath.Join(endpointsDir, "urlfinder.txt"),
+		"ducker":      filepath.Join(endpointsDir, "ducker.txt"),
+	}
+}
+
+func buildToolCommands(domain string, toolFiles map[string]string) map[string]string {
+	return map[string]string{
+		"waybackurls": fmt.Sprintf("waybackurls %s", shellEscape(domain)),
+		"gau":         fmt.Sprintf("gau %s", shellEscape(domain)),
+		"gau_subs":    fmt.Sprintf("gau %s --subs", shellEscape(domain)),
+		"xurlfind3r":  fmt.Sprintf("xurlfind3r -d %s --include-subdomains -s", shellEscape(domain)),
+		"urlscan": fmt.Sprintf(`curl -s "https://urlscan.io/api/v1/search/?q=page.domain:%s&size=10000" -H "API-Key: %s" | jq -r '.results[].page.url'`,
+			domain, os.Getenv("URLSCAN")),
+		"urlfinder": fmt.Sprintf("urlfinder -d %s -all", shellEscape(domain)),
+		"ducker":    fmt.Sprintf("ducker -q %s", shellEscape("site:"+domain)),
+		"waymore":   fmt.Sprintf("waymore -i %s -mode U -oU %s", shellEscape(domain), shellEscape(toolFiles["waymore"])),
+	}
+}
+
+func selectTools(toolsArg string) []string {
+	if toolsArg == "" {
+		selected := make([]string, len(defaultToolsOrder))
+		copy(selected, defaultToolsOrder)
+		return selected
+	}
+
+	return strings.Split(toolsArg, ",")
+}
+
+func discovery(domain, folderName string, toolsArg string, verbose bool, quiet bool, extractJS bool) {
 	baseDir := folderName
 	endpointsDir := filepath.Join(baseDir, "endpoints")
 	os.MkdirAll(endpointsDir, 0755)
@@ -264,35 +412,9 @@ func discovery(domain, folderName string, toolsArg string, verbose bool) {
 
 	printHeader(domain, folderName)
 
-	toolFiles := map[string]string{
-		"waymore":     filepath.Join(endpointsDir, "waymore.txt"),
-		"waybackurls": filepath.Join(endpointsDir, "waybackurls.txt"),
-		"gau":         filepath.Join(endpointsDir, "gau.txt"),
-		"xurlfind3r":  filepath.Join(endpointsDir, "xurlfind3r.txt"),
-		"urlscan":     filepath.Join(endpointsDir, "urlscan.txt"),
-		"urlfinder":   filepath.Join(endpointsDir, "urlfinder.txt"),
-		"ducker":      filepath.Join(endpointsDir, "ducker.txt"),
-	}
-
-	toolCommands := map[string]string{
-		"waybackurls": fmt.Sprintf("waybackurls %s", domain),
-		"gau":         fmt.Sprintf("gau %s --subs", domain),
-		"xurlfind3r":  fmt.Sprintf("xurlfind3r -d %s --include-subdomains -s", domain),
-		"urlscan": fmt.Sprintf(`curl -s "https://urlscan.io/api/v1/search/?q=page.domain:%s&size=10000" -H "API-Key: %s" | jq -r '.results[].page.url'`,
-			domain, os.Getenv("URLSCAN")),
-		"urlfinder": fmt.Sprintf("urlfinder -d %s -all", domain),
-		"ducker":    fmt.Sprintf("ducker -q 'site:%s'", domain),
-		"waymore":   fmt.Sprintf("waymore -i %s -mode U -oU %s", domain, toolFiles["waymore"]),
-	}
-
-	var selectedTools []string
-	if toolsArg != "" {
-		selectedTools = strings.Split(toolsArg, ",")
-	} else {
-		for tool := range toolFiles {
-			selectedTools = append(selectedTools, tool)
-		}
-	}
+	toolFiles := buildToolFiles(endpointsDir)
+	toolCommands := buildToolCommands(domain, toolFiles)
+	selectedTools := selectTools(toolsArg)
 
 	sem := make(chan struct{}, MaxConcurrentTools)
 	var wg sync.WaitGroup
@@ -314,7 +436,29 @@ func discovery(domain, folderName string, toolsArg string, verbose bool) {
 	}
 	wg.Wait()
 
-	aggregateAndClean(toolFiles, urlsFile, oldGlobalCount)
+	aggregateAndClean(toolFiles, urlsFile, oldGlobalCount, quiet)
+	if extractJS {
+		jsCount := extractJSURLs(urlsFile)
+		fmt.Printf(" %s %s  %s\n", iconCheck, colorTool(fmt.Sprintf("%-12s", "JS")), colorTime(fmt.Sprintf("%8d urls", jsCount)))
+	}
+}
+
+func runDiscovery(targets []string, baseFolder, toolsArg string, verbose bool, quiet bool, extractJS bool, splitPerTarget bool) {
+	usedFolders := make(map[string]int)
+
+	for _, target := range targets {
+		outputFolder := baseFolder
+		if splitPerTarget {
+			baseName := sanitizeTargetName(target)
+			folderName := baseName
+			if usedFolders[baseName] > 0 {
+				folderName = fmt.Sprintf("%s_%d", baseName, usedFolders[baseName]+1)
+			}
+			usedFolders[baseName]++
+			outputFolder = filepath.Join(baseFolder, folderName)
+		}
+		discovery(target, outputFolder, toolsArg, verbose, quiet, extractJS)
+	}
 }
 
 func init() {
@@ -331,20 +475,49 @@ func init() {
 
 func main() {
 	domain := flag.String("d", "", "Target domain")
+	listFile := flag.String("l", "", "File with targets, one per line")
 	folderName := flag.String("f", "", "Output folder")
+	mergeTargets := flag.Bool("merge-targets", false, "Merge all targets from -l into the same output folder")
+	mergeTargetsShort := flag.Bool("m", false, "Merge all targets from -l into the same output folder")
 	toolsArg := flag.String("t", "", "Tools list")
+	extractJS := flag.Bool("extract-js", false, "Extract JavaScript URLs into js.txt")
+	extractJSShort := flag.Bool("j", false, "Extract JavaScript URLs into js.txt")
+	quiet := flag.Bool("quiet", false, "Quiet mode")
+	quietShort := flag.Bool("q", false, "Quiet mode")
 	verbose := flag.Bool("v", false, "Verbose mode")
 	flag.Parse()
 
-	if *folderName == "" || *domain == "" {
+	mergeTargetsEnabled := *mergeTargets || *mergeTargetsShort
+	extractJSEnabled := *extractJS || *extractJSShort
+	quietEnabled := *quiet || *quietShort
+
+	if *folderName == "" || (*domain == "" && *listFile == "") || (*domain != "" && *listFile != "") {
 		// Mensagem de erro mais bonita
 		fmt.Println("")
-		color.Red("  ✖ Error: Missing arguments.")
+		color.Red("  ✖ Error: Invalid arguments.")
 		fmt.Println("  Usage: ufinder -d domain.com -f output_folder")
+		fmt.Println("         ufinder -l targets.txt -f output_folder")
 		fmt.Println("")
 		os.Exit(1)
 	}
 
-	printBanner()
-	discovery(*domain, *folderName, *toolsArg, *verbose)
+	if !quietEnabled {
+		printBanner()
+	}
+
+	if *listFile != "" {
+		targets, err := loadTargetsFromFile(*listFile)
+		if err != nil {
+			color.Red("  ✖ Error reading target list: %v", err)
+			os.Exit(1)
+		}
+		if len(targets) == 0 {
+			color.Red("  ✖ Error: target list is empty.")
+			os.Exit(1)
+		}
+		runDiscovery(targets, *folderName, *toolsArg, *verbose, quietEnabled, extractJSEnabled, !mergeTargetsEnabled)
+		return
+	}
+
+	runDiscovery([]string{*domain}, *folderName, *toolsArg, *verbose, quietEnabled, extractJSEnabled, false)
 }
