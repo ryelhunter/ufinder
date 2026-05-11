@@ -4,23 +4,24 @@ UFinder is a Go-based URL discovery and aggregation tool for security researcher
 
 ## Features
 
-- Run multiple URL discovery tools from a single command
-- Execute both `gau` and `gau --subs` by default
-- Deduplicate all collected URLs into a single `urls.txt`
-- Preserve per-tool output files for comparison and follow-up analysis
-- Re-run scans incrementally and highlight newly discovered URLs
-- Process either a single domain or a `.txt` file with one target per line
+- **Multi-tool Orchestration**: Run multiple URL discovery tools from a single command
+- **Dual GAU Coverage**: Execute both `gau` and `gau --subs` by default
+- **Automatic Deduplication**: Filter and maintain unique URL collections in `urls.txt`
+- **Incremental Discovery**: Track new URLs discovered across multiple scans
+- **Comparative Analysis**: Preserve per-tool output files for comparison and follow-up analysis
+- **Flexible Target Input**: Process either a single domain or a `.txt` file with one target per line
+- **Organized Output**: Results are saved in a structured directory format
 
 ## Supported Tools
 
-- `waymore`
-- `waybackurls`
-- `gau`
-- `gau --subs`
-- `xurlfind3r`
-- `urlscan`
-- `urlfinder`
-- `ducker`
+- **Waymore**: Discover URLs from the Wayback Machine
+- **Waybackurls**: Extract URLs from the Wayback Machine archive
+- **GAU**: Get All URLs from various sources
+- **GAU --subs**: Extend GAU discovery to include subdomains
+- **XURLFinder**: Advanced URL discovery with subdomain support
+- **URLScan**: Retrieve URLs from the URLScan.io API
+- **URLFinder**: Find URLs using custom patterns
+- **Ducker**: Extract URLs from search engine results
 
 ## Requirements
 
