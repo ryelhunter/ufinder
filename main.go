@@ -95,6 +95,21 @@ func isJSURL(rawURL string) bool {
 	return strings.HasSuffix(strings.ToLower(parsed.Path), ".js")
 }
 
+func normalizeJSURL(rawURL string) (string, bool) {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return "", false
+	}
+
+	if !strings.HasSuffix(strings.ToLower(parsed.Path), ".js") {
+		return "", false
+	}
+
+	parsed.RawQuery = ""
+	parsed.Fragment = ""
+	return parsed.String(), true
+}
+
 func countLines(filePath string) int {
 	if !fileExists(filePath) {
 		return 0
@@ -302,9 +317,11 @@ func extractJSURLs(urlsFile string) (int, int) {
 	}
 
 	jsFile := filepath.Join(filepath.Dir(urlsFile), "js.txt")
-	prevCount := countLines(jsFile)
+	jsUniqueFile := filepath.Join(filepath.Dir(urlsFile), "js_unique.txt")
+	prevCount := countLines(jsUniqueFile)
 
 	jsSet := make(map[string]bool)
+	jsUniqueSet := make(map[string]bool)
 	for _, line := range strings.Split(string(content), "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
@@ -312,6 +329,9 @@ func extractJSURLs(urlsFile string) (int, int) {
 		}
 		if isJSURL(line) {
 			jsSet[line] = true
+			if normalized, ok := normalizeJSURL(line); ok {
+				jsUniqueSet[normalized] = true
+			}
 		}
 	}
 
@@ -321,13 +341,25 @@ func extractJSURLs(urlsFile string) (int, int) {
 	}
 	sort.Strings(jsURLs)
 
+	var jsUniqueURLs []string
+	for jsURL := range jsUniqueSet {
+		jsUniqueURLs = append(jsUniqueURLs, jsURL)
+	}
+	sort.Strings(jsUniqueURLs)
+
 	if len(jsURLs) > 0 {
 		os.WriteFile(jsFile, []byte(strings.Join(jsURLs, "\n")+"\n"), 0644)
 	} else {
 		os.WriteFile(jsFile, []byte{}, 0644)
 	}
 
-	currentCount := len(jsURLs)
+	if len(jsUniqueURLs) > 0 {
+		os.WriteFile(jsUniqueFile, []byte(strings.Join(jsUniqueURLs, "\n")+"\n"), 0644)
+	} else {
+		os.WriteFile(jsUniqueFile, []byte{}, 0644)
+	}
+
+	currentCount := len(jsUniqueURLs)
 	newCount := currentCount - prevCount
 	if newCount < 0 {
 		newCount = 0
@@ -456,7 +488,7 @@ func discovery(domain, folderName string, toolsArg string, verbose bool, quiet b
 		fmt.Printf("│  %s                   │\n", color.HiWhiteString("JAVASCRIPT EXTRACTION"))
 		fmt.Println(color.HiCyanString("└──────────────────────────────────────────────┘"))
 		jsCount, newJSCount := extractJSURLs(urlsFile)
-		jsLabel := fmt.Sprintf("%-12s", "JS")
+		jsLabel := fmt.Sprintf("%-12s", "JS UNIQUE")
 		totalLabel := fmt.Sprintf("%8d urls", jsCount)
 
 		var newLabel string

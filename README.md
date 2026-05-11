@@ -138,7 +138,7 @@ ufinder -l targets.txt -f batch_output
 | `-f` | Output folder |
 | `-m`, `--merge-targets` | When using `-l`, write all targets into the same output folder |
 | `-t` | Comma-separated tool list, for example `waymore,gau,gau_subs,urlscan` |
-| `-j`, `--extract-js` | Extract JavaScript URLs from `urls.txt` into `js.txt` |
+| `-j`, `--extract-js` | Extract JavaScript URLs into `js.txt` and normalized entries into `js_unique.txt` |
 | `-q`, `--quiet` | Hide the banner and the final per-URL list of new findings |
 | `-v` | Verbose mode |
 
@@ -202,7 +202,8 @@ ufinder -d example.com -f example_recon -q -j
 output_directory/
 └── endpoints/
     ├── urls.txt                # Master file with all unique URLs
-    ├── js.txt                  # JavaScript URLs extracted from urls.txt
+    ├── js.txt                  # JavaScript URLs extracted from urls.txt, including query-string variants
+    ├── js_unique.txt           # Normalized JavaScript URLs without query strings or fragments
     ├── waymore.txt             # URLs found by waymore
     ├── waybackurls.txt         # URLs found by waybackurls
     ├── gau.txt                 # URLs found by gau
@@ -232,7 +233,8 @@ batch_output/
 output_directory/
 └── endpoints/
     ├── urls.txt                # Master file with all unique URLs
-    ├── js.txt                  # JavaScript URLs extracted from urls.txt
+    ├── js.txt                  # JavaScript URLs extracted from urls.txt, including query-string variants
+    ├── js_unique.txt           # Normalized JavaScript URLs without query strings or fragments
     ├── waymore.txt             # URLs found by waymore
     ├── waybackurls.txt         # URLs found by waybackurls
     ├── gau.txt                 # URLs found by gau
