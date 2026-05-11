@@ -174,7 +174,7 @@ ufinder -l targets.txt -f . -m
 Merge all targets into the current directory, run in quiet mode, and extract JavaScript URLs:
 
 ```bash
-ufinder -l targets.txt -f . -q -j -m
+ufinder -l targets.txt -f . -q -j -u -m
 ```
 
 Run in quiet mode:

@@ -102,18 +102,11 @@ func isJSURL(rawURL string) bool {
 }
 
 func normalizeJSURL(rawURL string) (string, bool) {
-	parsed, err := url.Parse(rawURL)
-	if err != nil {
+	if !isJSURL(rawURL) {
 		return "", false
 	}
 
-	if !strings.HasSuffix(strings.ToLower(parsed.Path), ".js") {
-		return "", false
-	}
-
-	parsed.RawQuery = ""
-	parsed.Fragment = ""
-	return parsed.String(), true
+	return normalizeUniqueURL(rawURL)
 }
 
 func normalizeUniqueURL(rawURL string) (string, bool) {
