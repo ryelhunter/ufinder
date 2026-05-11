@@ -134,6 +134,38 @@ func normalizeUniqueURL(rawURL string) (string, bool) {
 	return host + path, true
 }
 
+func normalizeHost(rawValue string) (string, bool) {
+	rawValue = strings.TrimSpace(rawValue)
+	if rawValue == "" {
+		return "", false
+	}
+
+	if !strings.Contains(rawValue, "://") {
+		rawValue = "https://" + rawValue
+	}
+
+	parsed, err := url.Parse(rawValue)
+	if err != nil || parsed.Host == "" {
+		return "", false
+	}
+
+	host := strings.ToLower(parsed.Hostname())
+	if host == "" {
+		return "", false
+	}
+
+	port := parsed.Port()
+	if port != "" && port != "80" && port != "443" {
+		host = host + ":" + port
+	}
+
+	return host, true
+}
+
+func isSubdomainOf(host string, seed string) bool {
+	return host != seed && strings.HasSuffix(host, "."+seed)
+}
+
 func countLines(filePath string) int {
 	if !fileExists(filePath) {
 		return 0
@@ -437,6 +469,80 @@ func extractUniqueURLs(urlsFile string) (int, int) {
 	return currentCount, newCount
 }
 
+func extractSubdomains(urlsFile string, knownTargets []string) (int, int) {
+	if !fileExists(urlsFile) {
+		return 0, 0
+	}
+
+	content, err := os.ReadFile(urlsFile)
+	if err != nil {
+		return 0, 0
+	}
+
+	subdomainsFile := filepath.Join(filepath.Dir(urlsFile), "subdomains.txt")
+	subdomainsNewFile := filepath.Join(filepath.Dir(urlsFile), "subdomains_new.txt")
+	prevCount := countLines(subdomainsNewFile)
+
+	knownTargetsSet := make(map[string]bool)
+	for _, target := range knownTargets {
+		if normalized, ok := normalizeHost(target); ok {
+			knownTargetsSet[normalized] = true
+		}
+	}
+
+	subdomainsSet := make(map[string]bool)
+	subdomainsNewSet := make(map[string]bool)
+	for _, line := range strings.Split(string(content), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if host, ok := normalizeHost(line); ok {
+			for seed := range knownTargetsSet {
+				if isSubdomainOf(host, seed) {
+					subdomainsSet[host] = true
+					if !knownTargetsSet[host] {
+						subdomainsNewSet[host] = true
+					}
+					break
+				}
+			}
+		}
+	}
+
+	var subdomains []string
+	for host := range subdomainsSet {
+		subdomains = append(subdomains, host)
+	}
+	sort.Strings(subdomains)
+
+	var subdomainsNew []string
+	for host := range subdomainsNewSet {
+		subdomainsNew = append(subdomainsNew, host)
+	}
+	sort.Strings(subdomainsNew)
+
+	if len(subdomains) > 0 {
+		os.WriteFile(subdomainsFile, []byte(strings.Join(subdomains, "\n")+"\n"), 0644)
+	} else {
+		os.WriteFile(subdomainsFile, []byte{}, 0644)
+	}
+
+	if len(subdomainsNew) > 0 {
+		os.WriteFile(subdomainsNewFile, []byte(strings.Join(subdomainsNew, "\n")+"\n"), 0644)
+	} else {
+		os.WriteFile(subdomainsNewFile, []byte{}, 0644)
+	}
+
+	currentCount := len(subdomainsNew)
+	newCount := currentCount - prevCount
+	if newCount < 0 {
+		newCount = 0
+	}
+
+	return len(subdomains), newCount
+}
+
 func sanitizeTargetName(target string) string {
 	replacer := strings.NewReplacer(
 		"/", "_",
@@ -518,7 +624,7 @@ func selectTools(toolsArg string) []string {
 	return strings.Split(toolsArg, ",")
 }
 
-func discovery(domain, folderName string, toolsArg string, verbose bool, quiet bool, extractJS bool, extractUnique bool, currentTarget int, totalTargets int) {
+func discovery(domain, folderName string, toolsArg string, verbose bool, quiet bool, extractJS bool, extractUnique bool, extractSubdomainsEnabled bool, knownTargets []string, currentTarget int, totalTargets int) {
 	baseDir := folderName
 	endpointsDir := filepath.Join(baseDir, "endpoints")
 	os.MkdirAll(endpointsDir, 0755)
@@ -573,6 +679,27 @@ func discovery(domain, folderName string, toolsArg string, verbose bool, quiet b
 		)
 		fmt.Println("")
 	}
+	if extractSubdomainsEnabled {
+		printSectionBox("SUBDOMAIN EXTRACTION")
+		subdomainsCount, newSubdomainsCount := extractSubdomains(urlsFile, knownTargets)
+		subdomainsLabel := fmt.Sprintf("%-12s", "SUBDOMAINS")
+		totalLabel := fmt.Sprintf("%8d subs", subdomainsCount)
+
+		var newLabel string
+		if newSubdomainsCount > 0 {
+			newLabel = colorNew(fmt.Sprintf("+%d new", newSubdomainsCount))
+		} else {
+			newLabel = colorZero("0 new")
+		}
+
+		fmt.Printf(" %s %s  %s  %s\n",
+			iconCheck,
+			colorTool(subdomainsLabel),
+			totalLabel,
+			newLabel,
+		)
+		fmt.Println("")
+	}
 	if extractJS {
 		printSectionBox("JAVASCRIPT EXTRACTION")
 		jsCount, newJSCount := extractJSURLs(urlsFile)
@@ -596,7 +723,7 @@ func discovery(domain, folderName string, toolsArg string, verbose bool, quiet b
 	}
 }
 
-func runDiscovery(targets []string, baseFolder, toolsArg string, verbose bool, quiet bool, extractJS bool, extractUnique bool, splitPerTarget bool) {
+func runDiscovery(targets []string, baseFolder, toolsArg string, verbose bool, quiet bool, extractJS bool, extractUnique bool, extractSubdomainsEnabled bool, splitPerTarget bool) {
 	usedFolders := make(map[string]int)
 
 	for index, target := range targets {
@@ -620,7 +747,7 @@ func runDiscovery(targets []string, baseFolder, toolsArg string, verbose bool, q
 			currentTarget = index + 1
 			totalTargets = len(targets)
 		}
-		discovery(target, outputFolder, toolsArg, verbose, quiet, extractJS, extractUnique, currentTarget, totalTargets)
+		discovery(target, outputFolder, toolsArg, verbose, quiet, extractJS, extractUnique, extractSubdomainsEnabled, targets, currentTarget, totalTargets)
 	}
 }
 
@@ -643,7 +770,9 @@ func main() {
 	mergeTargets := flag.Bool("merge-targets", false, "Merge all targets from -l into the same output folder")
 	mergeTargetsShort := flag.Bool("m", false, "Merge all targets from -l into the same output folder")
 	toolsArg := flag.String("t", "", "Tools list")
-	extractUnique := flag.Bool("extract-unique", false, "Extract normalized unique URLs into urls_unique.txt")
+	extractSubdomains := flag.Bool("extract-subdomains", false, "Extract subdomains into subdomains.txt and newly discovered ones into subdomains_new.txt")
+	extractSubdomainsShort := flag.Bool("s", false, "Extract subdomains into subdomains.txt and newly discovered ones into subdomains_new.txt")
+	extractUnique := flag.Bool("extract-normalized-urls", false, "Extract normalized unique URLs into urls_unique.txt")
 	extractUniqueShort := flag.Bool("u", false, "Extract normalized unique URLs into urls_unique.txt")
 	extractJS := flag.Bool("extract-js", false, "Extract JavaScript URLs into js.txt and js_unique.txt")
 	extractJSShort := flag.Bool("j", false, "Extract JavaScript URLs into js.txt and js_unique.txt")
@@ -653,6 +782,7 @@ func main() {
 	flag.Parse()
 
 	mergeTargetsEnabled := *mergeTargets || *mergeTargetsShort
+	extractSubdomainsEnabled := *extractSubdomains || *extractSubdomainsShort
 	extractUniqueEnabled := *extractUnique || *extractUniqueShort
 	extractJSEnabled := *extractJS || *extractJSShort
 	quietEnabled := *quiet || *quietShort
@@ -681,9 +811,9 @@ func main() {
 			color.Red("  ✖ Error: target list is empty.")
 			os.Exit(1)
 		}
-		runDiscovery(targets, *folderName, *toolsArg, *verbose, quietEnabled, extractJSEnabled, extractUniqueEnabled, !mergeTargetsEnabled)
+		runDiscovery(targets, *folderName, *toolsArg, *verbose, quietEnabled, extractJSEnabled, extractUniqueEnabled, extractSubdomainsEnabled, !mergeTargetsEnabled)
 		return
 	}
 
-	runDiscovery([]string{*domain}, *folderName, *toolsArg, *verbose, quietEnabled, extractJSEnabled, extractUniqueEnabled, false)
+	runDiscovery([]string{*domain}, *folderName, *toolsArg, *verbose, quietEnabled, extractJSEnabled, extractUniqueEnabled, extractSubdomainsEnabled, false)
 }
