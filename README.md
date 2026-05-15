@@ -8,6 +8,7 @@ UFinder is a powerful Go-based URL discovery and aggregation tool designed for s
 - **Dual GAU Coverage**: Execute both `gau` and `gau --subs` by default
 - **Automatic Deduplication**: Filter and maintain unique URL collections in `urls.txt`
 - **Incremental Discovery**: Track new URLs discovered across multiple scans
+- **Batch Resume Support**: Resume target list runs automatically from the last completed target
 - **Comparative Analysis**: Preserve per-tool output files for comparison and follow-up analysis
 - **Flexible Target Input**: Process either a single domain or a `.txt` file with one target per line
 - **Organized Output**: Results are saved in a structured directory format
@@ -138,6 +139,8 @@ ufinder -l targets.txt -f batch_output
 | `-f`, `--output` | Output folder |
 | `-m`, `--merge-targets` | When using `-l`, write all targets into the same output folder |
 | `-t`, `--tools` | Comma-separated tool list, for example `waymore,gau,gau_subs,urlscan` |
+| `-r`, `--resume` | Resume a `-l` batch using `.ufinder-resume.json` from the output folder |
+| `-R`, `--restart` | Restart a `-l` batch from the beginning and reset `.ufinder-resume.json` |
 | `-s`, `--extract-subdomains` | Extract discovered subdomains into `subdomains.txt` and newly discovered ones into `subdomains_new.txt` |
 | `-u`, `--extract-normalized-urls` | Extract normalized unique URLs into `urls_unique.txt` |
 | `-j`, `--extract-js` | Extract JavaScript URLs into `js.txt` and normalized entries into `js_unique.txt` |
@@ -164,6 +167,18 @@ Run a batch from a text file:
 
 ```bash
 ufinder -l targets.txt -f batch_recon
+```
+
+Resume a previous batch from the same output folder:
+
+```bash
+ufinder -l targets.txt -f batch_recon -r
+```
+
+Restart a batch from the beginning and reset the saved state:
+
+```bash
+ufinder -l targets.txt -f batch_recon -R
 ```
 
 Merge all targets from a list into the same output folder:
@@ -208,6 +223,16 @@ Use both shortcuts together:
 ufinder -d example.com -f example_recon -q -j -s
 ```
 
+## Resume Behavior
+
+When you run `ufinder` with `-l` and `-r`, it stores batch progress in the output folder root as `.ufinder-resume.json`.
+
+- Targets are marked as completed only after the full processing for that target finishes.
+- If the machine stops in the middle of a target, that target is processed again on the next `-r` run.
+- If the resume file does not exist yet, `ufinder` starts fresh and creates it automatically.
+- Running with `-R` resets the saved progress file and starts the batch from the first target again.
+- Running without `-r` processes the full list again, even if the resume file already exists.
+
 ## Output Structure
 
 ### Single target
@@ -236,6 +261,7 @@ output_directory/
 
 ```text
 batch_output/
+├── .ufinder-resume.json
 ├── example.com/
 │   └── endpoints/
 │       └── ...
@@ -248,6 +274,7 @@ batch_output/
 
 ```text
 output_directory/
+├── .ufinder-resume.json
 └── endpoints/
     ├── urls.txt                # Master file with all unique URLs
     ├── subdomains.txt          # Discovered subdomains extracted from urls.txt

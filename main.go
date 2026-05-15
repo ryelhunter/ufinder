@@ -3,6 +3,7 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"net/url"
@@ -22,6 +23,7 @@ import (
 
 // CONFIGURAÇÃO
 const MaxConcurrentTools = 1
+const resumeStateFileName = ".ufinder-resume.json"
 
 var defaultToolsOrder = []string{
 	"waymore",
@@ -32,6 +34,13 @@ var defaultToolsOrder = []string{
 	"urlscan",
 	"urlfinder",
 	"ducker",
+}
+
+type resumeState struct {
+	ListFile     string   `json:"list_file"`
+	OutputFolder string   `json:"output_folder,omitempty"`
+	Completed    []string `json:"completed"`
+	UpdatedAt    string   `json:"updated_at,omitempty"`
 }
 
 // --- HELPERS VISUAIS ---
@@ -185,6 +194,78 @@ func countLines(filePath string) int {
 	}
 	count, _ := strconv.Atoi(strings.TrimSpace(string(out)))
 	return count
+}
+
+func writeFileAtomic(filePath string, data []byte) error {
+	tempFile := filePath + ".tmp"
+	if err := os.WriteFile(tempFile, data, 0644); err != nil {
+		return err
+	}
+	return os.Rename(tempFile, filePath)
+}
+
+func resolveResumeStatePath(baseFolder string) string {
+	return filepath.Join(baseFolder, resumeStateFileName)
+}
+
+func loadResumeState(filePath string) (*resumeState, error) {
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil, err
+	}
+
+	var state resumeState
+	if err := json.Unmarshal(content, &state); err != nil {
+		return nil, err
+	}
+	if state.Completed == nil {
+		state.Completed = []string{}
+	}
+
+	return &state, nil
+}
+
+func saveResumeState(filePath string, state *resumeState) error {
+	state.UpdatedAt = time.Now().Format(time.RFC3339)
+	content, err := json.MarshalIndent(state, "", "  ")
+	if err != nil {
+		return err
+	}
+	content = append(content, '\n')
+	return writeFileAtomic(filePath, content)
+}
+
+func completedTargetsSet(completed []string) map[string]bool {
+	set := make(map[string]bool, len(completed))
+	for _, target := range completed {
+		target = strings.TrimSpace(target)
+		if target != "" {
+			set[target] = true
+		}
+	}
+	return set
+}
+
+func normalizePathForState(filePath string) string {
+	if filePath == "" {
+		return ""
+	}
+	absPath, err := filepath.Abs(filePath)
+	if err != nil {
+		return filePath
+	}
+	return absPath
+}
+
+func printResumeStatus(completedCount, totalTargets int, statePath string) {
+	fmt.Println(color.HiCyanString("┌──────────────────────────────────────────────┐"))
+	fmt.Printf("│  %s                            │\n", color.HiWhiteString("RESUME MODE ENABLED"))
+	fmt.Println(color.HiCyanString("├──────────────────────────────────────────────┤"))
+	fmt.Printf("│  Completed Targets : %-21d │\n", completedCount)
+	fmt.Printf("│  Remaining Targets : %-21d │\n", totalTargets-completedCount)
+	fmt.Printf("│  State File        : %-21s │\n", filepath.Base(statePath))
+	fmt.Println(color.HiCyanString("└──────────────────────────────────────────────┘"))
+	fmt.Println("")
 }
 
 func runShellCommand(command string, verbose bool) error {
@@ -732,11 +813,74 @@ func discovery(domain, folderName string, toolsArg string, verbose bool, quiet b
 	}
 }
 
-func runDiscovery(targets []string, baseFolder, toolsArg string, verbose bool, quiet bool, extractJS bool, extractUnique bool, extractSubdomainsEnabled bool, splitPerTarget bool) {
+func runDiscovery(targets []string, baseFolder, toolsArg string, verbose bool, quiet bool, extractJS bool, extractUnique bool, extractSubdomainsEnabled bool, splitPerTarget bool, resumeEnabled bool, restartEnabled bool, listFilePath string) error {
 	usedFolders := make(map[string]int)
 	totalStart := time.Now()
+	resumeStatePath := resolveResumeStatePath(baseFolder)
+	var state *resumeState
+	completedSet := make(map[string]bool)
+
+	if err := os.MkdirAll(baseFolder, 0755); err != nil {
+		return fmt.Errorf("error creating output folder: %w", err)
+	}
+
+	if restartEnabled {
+		state = &resumeState{
+			ListFile:     listFilePath,
+			OutputFolder: normalizePathForState(baseFolder),
+			Completed:    []string{},
+		}
+		if err := saveResumeState(resumeStatePath, state); err != nil {
+			return fmt.Errorf("error resetting resume state: %w", err)
+		}
+		if !quiet {
+			color.Yellow("  Restart mode enabled, resetting resume state at %s.", resumeStatePath)
+			fmt.Println("")
+		}
+	}
+
+	if resumeEnabled {
+		if fileExists(resumeStatePath) {
+			loadedState, err := loadResumeState(resumeStatePath)
+			if err != nil {
+				return fmt.Errorf("error reading resume state: %w", err)
+			}
+			if loadedState.ListFile != "" && listFilePath != "" && loadedState.ListFile != listFilePath {
+				return fmt.Errorf("resume state belongs to a different target list: %s", loadedState.ListFile)
+			}
+			state = loadedState
+			completedSet = completedTargetsSet(state.Completed)
+		} else {
+			if !quiet {
+				color.Yellow("  Resume file not found at %s, starting fresh.", resumeStatePath)
+				fmt.Println("")
+			}
+			state = &resumeState{}
+		}
+
+		if state.ListFile == "" {
+			state.ListFile = listFilePath
+		}
+		if state.OutputFolder == "" {
+			state.OutputFolder = normalizePathForState(baseFolder)
+		}
+		if err := saveResumeState(resumeStatePath, state); err != nil {
+			return fmt.Errorf("error initializing resume state: %w", err)
+		}
+
+		if !quiet {
+			printResumeStatus(len(completedSet), len(targets), resumeStatePath)
+		}
+	}
 
 	for index, target := range targets {
+		if resumeEnabled && completedSet[target] {
+			if !quiet {
+				fmt.Printf(" %s %s\n", color.HiBlackString("↷"), color.HiBlackString("Skipping completed target: "+target))
+			}
+			continue
+		}
+
 		targetStart := time.Now()
 		outputFolder := baseFolder
 		if splitPerTarget {
@@ -760,6 +904,16 @@ func runDiscovery(targets []string, baseFolder, toolsArg string, verbose bool, q
 		}
 		discovery(target, outputFolder, toolsArg, verbose, quiet, extractJS, extractUnique, extractSubdomainsEnabled, targets, currentTarget, totalTargets)
 
+		if resumeEnabled {
+			if !completedSet[target] {
+				state.Completed = append(state.Completed, target)
+				completedSet[target] = true
+			}
+			if err := saveResumeState(resumeStatePath, state); err != nil {
+				return fmt.Errorf("error saving resume state: %w", err)
+			}
+		}
+
 		if len(targets) > 1 {
 			printElapsedBox(fmt.Sprintf("TARGET COMPLETED [%d/%d]", currentTarget, totalTargets), time.Since(targetStart))
 		}
@@ -768,6 +922,8 @@ func runDiscovery(targets []string, baseFolder, toolsArg string, verbose bool, q
 	if len(targets) > 1 {
 		printElapsedBox("TOTAL EXECUTION TIME", time.Since(totalStart))
 	}
+
+	return nil
 }
 
 func init() {
@@ -799,6 +955,10 @@ func main() {
 	extractUniqueShort := flag.Bool("u", false, "Extract normalized unique URLs into urls_unique.txt")
 	extractJS := flag.Bool("extract-js", false, "Extract JavaScript URLs into js.txt and js_unique.txt")
 	extractJSShort := flag.Bool("j", false, "Extract JavaScript URLs into js.txt and js_unique.txt")
+	resume := flag.Bool("resume", false, "Resume a target list run from the output folder state file")
+	resumeShort := flag.Bool("r", false, "Resume a target list run from the output folder state file")
+	restart := flag.Bool("restart", false, "Restart a target list run and reset the saved resume state")
+	restartShort := flag.Bool("R", false, "Restart a target list run and reset the saved resume state")
 	quiet := flag.Bool("quiet", false, "Quiet mode")
 	quietShort := flag.Bool("q", false, "Quiet mode")
 	verbose := flag.Bool("v", false, "Verbose mode")
@@ -825,8 +985,15 @@ func main() {
 	extractSubdomainsEnabled := *extractSubdomains || *extractSubdomainsShort
 	extractUniqueEnabled := *extractUnique || *extractUniqueShort
 	extractJSEnabled := *extractJS || *extractJSShort
+	resumeEnabled := *resume || *resumeShort
+	restartEnabled := *restart || *restartShort
 	quietEnabled := *quiet || *quietShort
 	verboseEnabled := *verbose || *verboseLong
+
+	if resumeEnabled && restartEnabled {
+		color.Red("  ✖ Error: use either -r/--resume or -R/--restart, not both.")
+		os.Exit(1)
+	}
 
 	if folderNameValue == "" || (domainValue == "" && listFileValue == "") || (domainValue != "" && listFileValue != "") {
 		// Mensagem de erro mais bonita
@@ -852,9 +1019,15 @@ func main() {
 			color.Red("  ✖ Error: target list is empty.")
 			os.Exit(1)
 		}
-		runDiscovery(targets, folderNameValue, toolsArgValue, verboseEnabled, quietEnabled, extractJSEnabled, extractUniqueEnabled, extractSubdomainsEnabled, !mergeTargetsEnabled)
+		if err := runDiscovery(targets, folderNameValue, toolsArgValue, verboseEnabled, quietEnabled, extractJSEnabled, extractUniqueEnabled, extractSubdomainsEnabled, !mergeTargetsEnabled, resumeEnabled, restartEnabled, normalizePathForState(listFileValue)); err != nil {
+			color.Red("  ✖ Error: %v", err)
+			os.Exit(1)
+		}
 		return
 	}
 
-	runDiscovery([]string{domainValue}, folderNameValue, toolsArgValue, verboseEnabled, quietEnabled, extractJSEnabled, extractUniqueEnabled, extractSubdomainsEnabled, false)
+	if err := runDiscovery([]string{domainValue}, folderNameValue, toolsArgValue, verboseEnabled, quietEnabled, extractJSEnabled, extractUniqueEnabled, extractSubdomainsEnabled, false, false, false, ""); err != nil {
+		color.Red("  ✖ Error: %v", err)
+		os.Exit(1)
+	}
 }
