@@ -175,10 +175,22 @@ Resume a previous batch from the same output folder:
 ufinder -l targets.txt -f batch_recon -r
 ```
 
+Resume a previous batch using the long flag:
+
+```bash
+ufinder -l targets.txt -f batch_recon --resume
+```
+
 Restart a batch from the beginning and reset the saved state:
 
 ```bash
 ufinder -l targets.txt -f batch_recon -R
+```
+
+Restart a batch using the long flag:
+
+```bash
+ufinder -l targets.txt -f batch_recon --restart
 ```
 
 Merge all targets from a list into the same output folder:
@@ -232,6 +244,26 @@ When you run `ufinder` with `-l` and `-r`, it stores batch progress in the outpu
 - If the resume file does not exist yet, `ufinder` starts fresh and creates it automatically.
 - Running with `-R` resets the saved progress file and starts the batch from the first target again.
 - Running without `-r` processes the full list again, even if the resume file already exists.
+
+### Practical Flow
+
+Start a batch normally:
+
+```bash
+ufinder -l targets.txt -f batch_recon
+```
+
+Continue that same batch later from the same output folder:
+
+```bash
+ufinder -l targets.txt -f batch_recon --resume
+```
+
+Reset the saved progress and start that same batch again from the beginning:
+
+```bash
+ufinder -l targets.txt -f batch_recon --restart
+```
 
 ## Output Structure
 
