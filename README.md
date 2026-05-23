@@ -136,6 +136,7 @@ ufinder -l targets.txt -f batch_output
 |------|-------------|
 | `-d`, `--domain` | Single target domain |
 | `-l`, `--list` | Text file containing one target per line |
+| `-J`, `--extract-js-from` | Read an existing URLs file and generate `js.txt` and `js_unique.txt` in the same directory |
 | `-f`, `--output` | Output folder |
 | `-m`, `--merge-targets` | When using `-l`, write all targets into the same output folder |
 | `-t`, `--tools` | Comma-separated tool list, for example `waymore,gau,gau_subs,urlscan` |
@@ -147,7 +148,7 @@ ufinder -l targets.txt -f batch_output
 | `-q`, `--quiet` | Hide the banner and the final per-URL list of new findings |
 | `-v`, `--verbose` | Verbose mode |
 
-Use either `-d` or `-l`.
+Use either `-d`, `-l`, or `-J`.
 
 ## Examples
 
@@ -167,6 +168,12 @@ Run a batch from a text file:
 
 ```bash
 ufinder -l targets.txt -f batch_recon
+```
+
+Generate `js.txt` and `js_unique.txt` later from an existing URLs file:
+
+```bash
+ufinder -J batch_recon/endpoints/urls.txt
 ```
 
 Resume a previous batch from the same output folder:
@@ -215,6 +222,12 @@ Extract JavaScript URLs after aggregation:
 
 ```bash
 ufinder -d example.com -f example_recon -j
+```
+
+Extract JavaScript URLs from a previously generated `urls.txt` without rerunning discovery:
+
+```bash
+ufinder --extract-js-from example_recon/endpoints/urls.txt
 ```
 
 Extract normalized unique URLs after aggregation:

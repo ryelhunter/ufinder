@@ -519,6 +519,49 @@ func extractJSURLs(urlsFile string, inputURLs []string) (int, int) {
 	return currentCount, newCount
 }
 
+func extractJSFromFile(urlsFile string, quiet bool) error {
+	if !fileExists(urlsFile) {
+		return fmt.Errorf("urls file not found: %s", urlsFile)
+	}
+
+	inputURLs := make([]string, 0)
+	for line := range readLinesAsSet(urlsFile) {
+		inputURLs = append(inputURLs, line)
+	}
+	sort.Strings(inputURLs)
+
+	printSectionBox("JAVASCRIPT EXTRACTION")
+	jsCount, newJSCount := extractJSURLs(urlsFile, inputURLs)
+	jsLabel := fmt.Sprintf("%-12s", "JS UNIQUE")
+	totalLabel := fmt.Sprintf("%8d urls", jsCount)
+
+	var newLabel string
+	if newJSCount > 0 {
+		newLabel = colorNew(fmt.Sprintf("+%d new", newJSCount))
+	} else {
+		newLabel = colorZero("0 new")
+	}
+
+	fmt.Printf(" %s %s  %s  %s\n",
+		iconCheck,
+		colorTool(jsLabel),
+		totalLabel,
+		newLabel,
+	)
+	fmt.Println("")
+
+	if !quiet {
+		jsFile := filepath.Join(filepath.Dir(urlsFile), "js.txt")
+		jsUniqueFile := filepath.Join(filepath.Dir(urlsFile), "js_unique.txt")
+		fmt.Printf("   %s Source: %s\n", iconSearch, color.HiWhiteString(urlsFile))
+		fmt.Printf("   %s Output: %s\n", iconBox, color.HiWhiteString(filepath.Dir(urlsFile)))
+		fmt.Printf("   %s Files : %s, %s\n", iconCheck, color.HiWhiteString(filepath.Base(jsFile)), color.HiWhiteString(filepath.Base(jsUniqueFile)))
+		fmt.Println("")
+	}
+
+	return nil
+}
+
 func extractUniqueURLs(urlsFile string, inputURLs []string) (int, int) {
 	uniqueFile := filepath.Join(filepath.Dir(urlsFile), "urls_unique.txt")
 	uniqueSet := readLinesAsSet(uniqueFile)
@@ -899,6 +942,8 @@ func main() {
 	domainLong := flag.String("domain", "", "Target domain")
 	listFile := flag.String("l", "", "File with targets, one per line")
 	listFileLong := flag.String("list", "", "File with targets, one per line")
+	extractJSFrom := flag.String("J", "", "Extract JavaScript URLs from an existing URLs file")
+	extractJSFromLong := flag.String("extract-js-from", "", "Extract JavaScript URLs from an existing URLs file")
 	folderName := flag.String("f", "", "Output folder")
 	folderNameLong := flag.String("output", "", "Output folder")
 	mergeTargets := flag.Bool("merge-targets", false, "Merge all targets from -l into the same output folder")
@@ -929,6 +974,10 @@ func main() {
 	if listFileValue == "" {
 		listFileValue = *listFileLong
 	}
+	extractJSFromValue := *extractJSFrom
+	if extractJSFromValue == "" {
+		extractJSFromValue = *extractJSFromLong
+	}
 	folderNameValue := *folderName
 	if folderNameValue == "" {
 		folderNameValue = *folderNameLong
@@ -951,12 +1000,28 @@ func main() {
 		os.Exit(1)
 	}
 
+	if extractJSFromValue != "" {
+		if domainValue != "" || listFileValue != "" || folderNameValue != "" || toolsArgValue != "" || mergeTargetsEnabled || extractSubdomainsEnabled || extractUniqueEnabled || extractJSEnabled || resumeEnabled || restartEnabled {
+			color.Red("  ✖ Error: -J/--extract-js-from must be used alone, optionally with -q or -v.")
+			os.Exit(1)
+		}
+		if !quietEnabled {
+			printBanner()
+		}
+		if err := extractJSFromFile(extractJSFromValue, quietEnabled); err != nil {
+			color.Red("  ✖ Error: %v", err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	if folderNameValue == "" || (domainValue == "" && listFileValue == "") || (domainValue != "" && listFileValue != "") {
 		// Mensagem de erro mais bonita
 		fmt.Println("")
 		color.Red("  ✖ Error: Invalid arguments.")
 		fmt.Println("  Usage: ufinder -d domain.com -f output_folder")
 		fmt.Println("         ufinder -l targets.txt -f output_folder")
+		fmt.Println("         ufinder -J path/to/urls.txt")
 		fmt.Println("")
 		os.Exit(1)
 	}
