@@ -562,6 +562,91 @@ func extractJSFromFile(urlsFile string, quiet bool) error {
 	return nil
 }
 
+func extractUniqueFromFile(urlsFile string, quiet bool) error {
+	if !fileExists(urlsFile) {
+		return fmt.Errorf("urls file not found: %s", urlsFile)
+	}
+
+	inputURLs := make([]string, 0)
+	for line := range readLinesAsSet(urlsFile) {
+		inputURLs = append(inputURLs, line)
+	}
+	sort.Strings(inputURLs)
+
+	printSectionBox("URL NORMALIZATION")
+	uniqueCount, newUniqueCount := extractUniqueURLs(urlsFile, inputURLs)
+	uniqueLabel := fmt.Sprintf("%-12s", "URLS UNIQUE")
+	totalLabel := fmt.Sprintf("%8d urls", uniqueCount)
+
+	var newLabel string
+	if newUniqueCount > 0 {
+		newLabel = colorNew(fmt.Sprintf("+%d new", newUniqueCount))
+	} else {
+		newLabel = colorZero("0 new")
+	}
+
+	fmt.Printf(" %s %s  %s  %s\n",
+		iconCheck,
+		colorTool(uniqueLabel),
+		totalLabel,
+		newLabel,
+	)
+	fmt.Println("")
+
+	if !quiet {
+		uniqueFile := filepath.Join(filepath.Dir(urlsFile), "urls_unique.txt")
+		fmt.Printf("   %s Source: %s\n", iconSearch, color.HiWhiteString(urlsFile))
+		fmt.Printf("   %s Output: %s\n", iconBox, color.HiWhiteString(filepath.Dir(urlsFile)))
+		fmt.Printf("   %s Files : %s\n", iconCheck, color.HiWhiteString(filepath.Base(uniqueFile)))
+		fmt.Println("")
+	}
+
+	return nil
+}
+
+func extractSubdomainsFromFile(urlsFile string, knownTargets []string, quiet bool) error {
+	if !fileExists(urlsFile) {
+		return fmt.Errorf("urls file not found: %s", urlsFile)
+	}
+
+	inputURLs := make([]string, 0)
+	for line := range readLinesAsSet(urlsFile) {
+		inputURLs = append(inputURLs, line)
+	}
+	sort.Strings(inputURLs)
+
+	printSectionBox("SUBDOMAIN EXTRACTION")
+	subdomainsCount, newSubdomainsCount := extractSubdomains(urlsFile, inputURLs, knownTargets)
+	subdomainsLabel := fmt.Sprintf("%-12s", "SUBDOMAINS")
+	totalLabel := fmt.Sprintf("%8d subs", subdomainsCount)
+
+	var newLabel string
+	if newSubdomainsCount > 0 {
+		newLabel = colorNew(fmt.Sprintf("+%d new", newSubdomainsCount))
+	} else {
+		newLabel = colorZero("0 new")
+	}
+
+	fmt.Printf(" %s %s  %s  %s\n",
+		iconCheck,
+		colorTool(subdomainsLabel),
+		totalLabel,
+		newLabel,
+	)
+	fmt.Println("")
+
+	if !quiet {
+		subdomainsFile := filepath.Join(filepath.Dir(urlsFile), "subdomains.txt")
+		subdomainsNewFile := filepath.Join(filepath.Dir(urlsFile), "subdomains_new.txt")
+		fmt.Printf("   %s Source: %s\n", iconSearch, color.HiWhiteString(urlsFile))
+		fmt.Printf("   %s Output: %s\n", iconBox, color.HiWhiteString(filepath.Dir(urlsFile)))
+		fmt.Printf("   %s Files : %s, %s\n", iconCheck, color.HiWhiteString(filepath.Base(subdomainsFile)), color.HiWhiteString(filepath.Base(subdomainsNewFile)))
+		fmt.Println("")
+	}
+
+	return nil
+}
+
 func extractUniqueURLs(urlsFile string, inputURLs []string) (int, int) {
 	uniqueFile := filepath.Join(filepath.Dir(urlsFile), "urls_unique.txt")
 	uniqueSet := readLinesAsSet(uniqueFile)
@@ -944,6 +1029,10 @@ func main() {
 	listFileLong := flag.String("list", "", "File with targets, one per line")
 	extractJSFrom := flag.String("J", "", "Extract JavaScript URLs from an existing URLs file")
 	extractJSFromLong := flag.String("extract-js-from", "", "Extract JavaScript URLs from an existing URLs file")
+	extractUniqueFrom := flag.String("U", "", "Extract normalized URLs from an existing URLs file")
+	extractUniqueFromLong := flag.String("extract-normalized-urls-from", "", "Extract normalized URLs from an existing URLs file")
+	extractSubdomainsFrom := flag.String("S", "", "Extract subdomains from an existing URLs file")
+	extractSubdomainsFromLong := flag.String("extract-subdomains-from", "", "Extract subdomains from an existing URLs file")
 	folderName := flag.String("f", "", "Output folder")
 	folderNameLong := flag.String("output", "", "Output folder")
 	mergeTargets := flag.Bool("merge-targets", false, "Merge all targets from -l into the same output folder")
@@ -978,6 +1067,14 @@ func main() {
 	if extractJSFromValue == "" {
 		extractJSFromValue = *extractJSFromLong
 	}
+	extractUniqueFromValue := *extractUniqueFrom
+	if extractUniqueFromValue == "" {
+		extractUniqueFromValue = *extractUniqueFromLong
+	}
+	extractSubdomainsFromValue := *extractSubdomainsFrom
+	if extractSubdomainsFromValue == "" {
+		extractSubdomainsFromValue = *extractSubdomainsFromLong
+	}
 	folderNameValue := *folderName
 	if folderNameValue == "" {
 		folderNameValue = *folderNameLong
@@ -1000,6 +1097,21 @@ func main() {
 		os.Exit(1)
 	}
 
+	fromModes := 0
+	if extractJSFromValue != "" {
+		fromModes++
+	}
+	if extractUniqueFromValue != "" {
+		fromModes++
+	}
+	if extractSubdomainsFromValue != "" {
+		fromModes++
+	}
+	if fromModes > 1 {
+		color.Red("  ✖ Error: use only one of -J/--extract-js-from, -U/--extract-normalized-urls-from, or -S/--extract-subdomains-from.")
+		os.Exit(1)
+	}
+
 	if extractJSFromValue != "" {
 		if domainValue != "" || listFileValue != "" || folderNameValue != "" || toolsArgValue != "" || mergeTargetsEnabled || extractSubdomainsEnabled || extractUniqueEnabled || extractJSEnabled || resumeEnabled || restartEnabled {
 			color.Red("  ✖ Error: -J/--extract-js-from must be used alone, optionally with -q or -v.")
@@ -1015,6 +1127,57 @@ func main() {
 		return
 	}
 
+	if extractUniqueFromValue != "" {
+		if domainValue != "" || listFileValue != "" || folderNameValue != "" || toolsArgValue != "" || mergeTargetsEnabled || extractSubdomainsEnabled || extractUniqueEnabled || extractJSEnabled || resumeEnabled || restartEnabled {
+			color.Red("  ✖ Error: -U/--extract-normalized-urls-from must be used alone, optionally with -q or -v.")
+			os.Exit(1)
+		}
+		if !quietEnabled {
+			printBanner()
+		}
+		if err := extractUniqueFromFile(extractUniqueFromValue, quietEnabled); err != nil {
+			color.Red("  ✖ Error: %v", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	if extractSubdomainsFromValue != "" {
+		if folderNameValue != "" || toolsArgValue != "" || mergeTargetsEnabled || extractSubdomainsEnabled || extractUniqueEnabled || extractJSEnabled || resumeEnabled || restartEnabled {
+			color.Red("  ✖ Error: -S/--extract-subdomains-from only supports -d or -l as seed input, optionally with -q or -v.")
+			os.Exit(1)
+		}
+		if (domainValue == "" && listFileValue == "") || (domainValue != "" && listFileValue != "") {
+			color.Red("  ✖ Error: -S/--extract-subdomains-from requires exactly one seed source: -d or -l.")
+			os.Exit(1)
+		}
+		if !quietEnabled {
+			printBanner()
+		}
+
+		var knownTargets []string
+		if listFileValue != "" {
+			targets, err := loadTargetsFromFile(listFileValue)
+			if err != nil {
+				color.Red("  ✖ Error reading target list: %v", err)
+				os.Exit(1)
+			}
+			if len(targets) == 0 {
+				color.Red("  ✖ Error: target list is empty.")
+				os.Exit(1)
+			}
+			knownTargets = targets
+		} else {
+			knownTargets = []string{domainValue}
+		}
+
+		if err := extractSubdomainsFromFile(extractSubdomainsFromValue, knownTargets, quietEnabled); err != nil {
+			color.Red("  ✖ Error: %v", err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	if folderNameValue == "" || (domainValue == "" && listFileValue == "") || (domainValue != "" && listFileValue != "") {
 		// Mensagem de erro mais bonita
 		fmt.Println("")
@@ -1022,6 +1185,8 @@ func main() {
 		fmt.Println("  Usage: ufinder -d domain.com -f output_folder")
 		fmt.Println("         ufinder -l targets.txt -f output_folder")
 		fmt.Println("         ufinder -J path/to/urls.txt")
+		fmt.Println("         ufinder -U path/to/urls.txt")
+		fmt.Println("         ufinder -S path/to/urls.txt -d domain.com")
 		fmt.Println("")
 		os.Exit(1)
 	}

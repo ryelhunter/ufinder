@@ -137,6 +137,8 @@ ufinder -l targets.txt -f batch_output
 | `-d`, `--domain` | Single target domain |
 | `-l`, `--list` | Text file containing one target per line |
 | `-J`, `--extract-js-from` | Read an existing URLs file and generate `js.txt` and `js_unique.txt` in the same directory |
+| `-U`, `--extract-normalized-urls-from` | Read an existing URLs file and generate `urls_unique.txt` in the same directory |
+| `-S`, `--extract-subdomains-from` | Read an existing URLs file and generate `subdomains.txt` and `subdomains_new.txt` in the same directory using seeds from `-d` or `-l` |
 | `-f`, `--output` | Output folder |
 | `-m`, `--merge-targets` | When using `-l`, write all targets into the same output folder |
 | `-t`, `--tools` | Comma-separated tool list, for example `waymore,gau,gau_subs,urlscan` |
@@ -148,7 +150,7 @@ ufinder -l targets.txt -f batch_output
 | `-q`, `--quiet` | Hide the banner and the final per-URL list of new findings |
 | `-v`, `--verbose` | Verbose mode |
 
-Use either `-d`, `-l`, or `-J`.
+Use either `-d`, `-l`, or one of the standalone post-processing modes `-J`, `-U`, or `-S`.
 
 ## Examples
 
@@ -174,6 +176,24 @@ Generate `js.txt` and `js_unique.txt` later from an existing URLs file:
 
 ```bash
 ufinder -J batch_recon/endpoints/urls.txt
+```
+
+Generate `urls_unique.txt` later from an existing URLs file:
+
+```bash
+ufinder -U batch_recon/endpoints/urls.txt
+```
+
+Generate `subdomains.txt` and `subdomains_new.txt` later from an existing URLs file using a single seed domain:
+
+```bash
+ufinder -S batch_recon/endpoints/urls.txt -d example.com
+```
+
+Generate `subdomains.txt` and `subdomains_new.txt` later from an existing URLs file using a seed list:
+
+```bash
+ufinder -S batch_recon/endpoints/urls.txt -l seeds.txt
 ```
 
 Resume a previous batch from the same output folder:
@@ -230,6 +250,12 @@ Extract JavaScript URLs from a previously generated `urls.txt` without rerunning
 ufinder --extract-js-from example_recon/endpoints/urls.txt
 ```
 
+Extract normalized unique URLs from a previously generated `urls.txt` without rerunning discovery:
+
+```bash
+ufinder --extract-normalized-urls-from example_recon/endpoints/urls.txt
+```
+
 Extract normalized unique URLs after aggregation:
 
 ```bash
@@ -240,6 +266,12 @@ Extract discovered subdomains after aggregation:
 
 ```bash
 ufinder -l targets.txt -f batch_recon -s
+```
+
+Extract discovered subdomains from a previously generated `urls.txt` using a seed domain:
+
+```bash
+ufinder --extract-subdomains-from batch_recon/endpoints/urls.txt -d example.com
 ```
 
 Use both shortcuts together:
