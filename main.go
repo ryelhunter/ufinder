@@ -344,7 +344,7 @@ func runTool(command, toolName, outputFile string, verbose bool) {
 	)
 }
 
-func aggregateAndClean(toolFiles map[string]string, urlsFile string, oldGlobalCount int, quiet bool) {
+func aggregateAndClean(toolFiles map[string]string, urlsFile string, oldGlobalCount int, quiet bool) []string {
 	// Spinner para a agregação
 	fmt.Println("")
 	s := spinner.New(spinner.CharSets[11], 100*time.Millisecond)
@@ -450,62 +450,67 @@ func aggregateAndClean(toolFiles map[string]string, urlsFile string, oldGlobalCo
 		}
 	}
 	fmt.Println("")
+
+	return newURLs
 }
 
-func extractJSURLs(urlsFile string) (int, int) {
-	if !fileExists(urlsFile) {
-		return 0, 0
+func readLinesAsSet(filePath string) map[string]bool {
+	set := make(map[string]bool)
+	if !fileExists(filePath) {
+		return set
 	}
 
-	content, err := os.ReadFile(urlsFile)
+	content, err := os.ReadFile(filePath)
 	if err != nil {
-		return 0, 0
+		return set
 	}
 
-	jsFile := filepath.Join(filepath.Dir(urlsFile), "js.txt")
-	jsUniqueFile := filepath.Join(filepath.Dir(urlsFile), "js_unique.txt")
-	prevCount := countLines(jsUniqueFile)
-
-	jsSet := make(map[string]bool)
-	jsUniqueSet := make(map[string]bool)
 	for _, line := range strings.Split(string(content), "\n") {
 		line = strings.TrimSpace(line)
-		if line == "" {
+		if line != "" {
+			set[line] = true
+		}
+	}
+
+	return set
+}
+
+func writeSortedSet(filePath string, set map[string]bool) {
+	values := make([]string, 0, len(set))
+	for value := range set {
+		values = append(values, value)
+	}
+	sort.Strings(values)
+
+	if len(values) > 0 {
+		os.WriteFile(filePath, []byte(strings.Join(values, "\n")+"\n"), 0644)
+	} else {
+		os.WriteFile(filePath, []byte{}, 0644)
+	}
+}
+
+func extractJSURLs(urlsFile string, inputURLs []string) (int, int) {
+	jsFile := filepath.Join(filepath.Dir(urlsFile), "js.txt")
+	jsUniqueFile := filepath.Join(filepath.Dir(urlsFile), "js_unique.txt")
+	jsSet := readLinesAsSet(jsFile)
+	jsUniqueSet := readLinesAsSet(jsUniqueFile)
+	prevCount := len(jsUniqueSet)
+
+	for _, line := range inputURLs {
+		line = strings.TrimSpace(line)
+		if line == "" || !isJSURL(line) {
 			continue
 		}
-		if isJSURL(line) {
-			jsSet[line] = true
-			if normalized, ok := normalizeJSURL(line); ok {
-				jsUniqueSet[normalized] = true
-			}
+		jsSet[line] = true
+		if normalized, ok := normalizeJSURL(line); ok {
+			jsUniqueSet[normalized] = true
 		}
 	}
 
-	var jsURLs []string
-	for jsURL := range jsSet {
-		jsURLs = append(jsURLs, jsURL)
-	}
-	sort.Strings(jsURLs)
+	writeSortedSet(jsFile, jsSet)
+	writeSortedSet(jsUniqueFile, jsUniqueSet)
 
-	var jsUniqueURLs []string
-	for jsURL := range jsUniqueSet {
-		jsUniqueURLs = append(jsUniqueURLs, jsURL)
-	}
-	sort.Strings(jsUniqueURLs)
-
-	if len(jsURLs) > 0 {
-		os.WriteFile(jsFile, []byte(strings.Join(jsURLs, "\n")+"\n"), 0644)
-	} else {
-		os.WriteFile(jsFile, []byte{}, 0644)
-	}
-
-	if len(jsUniqueURLs) > 0 {
-		os.WriteFile(jsUniqueFile, []byte(strings.Join(jsUniqueURLs, "\n")+"\n"), 0644)
-	} else {
-		os.WriteFile(jsUniqueFile, []byte{}, 0644)
-	}
-
-	currentCount := len(jsUniqueURLs)
+	currentCount := len(jsUniqueSet)
 	newCount := currentCount - prevCount
 	if newCount < 0 {
 		newCount = 0
@@ -514,21 +519,12 @@ func extractJSURLs(urlsFile string) (int, int) {
 	return currentCount, newCount
 }
 
-func extractUniqueURLs(urlsFile string) (int, int) {
-	if !fileExists(urlsFile) {
-		return 0, 0
-	}
-
-	content, err := os.ReadFile(urlsFile)
-	if err != nil {
-		return 0, 0
-	}
-
+func extractUniqueURLs(urlsFile string, inputURLs []string) (int, int) {
 	uniqueFile := filepath.Join(filepath.Dir(urlsFile), "urls_unique.txt")
-	prevCount := countLines(uniqueFile)
+	uniqueSet := readLinesAsSet(uniqueFile)
+	prevCount := len(uniqueSet)
 
-	uniqueSet := make(map[string]bool)
-	for _, line := range strings.Split(string(content), "\n") {
+	for _, line := range inputURLs {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
@@ -538,19 +534,9 @@ func extractUniqueURLs(urlsFile string) (int, int) {
 		}
 	}
 
-	var uniqueURLs []string
-	for normalizedURL := range uniqueSet {
-		uniqueURLs = append(uniqueURLs, normalizedURL)
-	}
-	sort.Strings(uniqueURLs)
+	writeSortedSet(uniqueFile, uniqueSet)
 
-	if len(uniqueURLs) > 0 {
-		os.WriteFile(uniqueFile, []byte(strings.Join(uniqueURLs, "\n")+"\n"), 0644)
-	} else {
-		os.WriteFile(uniqueFile, []byte{}, 0644)
-	}
-
-	currentCount := len(uniqueURLs)
+	currentCount := len(uniqueSet)
 	newCount := currentCount - prevCount
 	if newCount < 0 {
 		newCount = 0
@@ -559,20 +545,9 @@ func extractUniqueURLs(urlsFile string) (int, int) {
 	return currentCount, newCount
 }
 
-func extractSubdomains(urlsFile string, knownTargets []string) (int, int) {
-	if !fileExists(urlsFile) {
-		return 0, 0
-	}
-
-	content, err := os.ReadFile(urlsFile)
-	if err != nil {
-		return 0, 0
-	}
-
+func extractSubdomains(urlsFile string, inputURLs []string, knownTargets []string) (int, int) {
 	subdomainsFile := filepath.Join(filepath.Dir(urlsFile), "subdomains.txt")
 	subdomainsNewFile := filepath.Join(filepath.Dir(urlsFile), "subdomains_new.txt")
-	prevCount := countLines(subdomainsNewFile)
-
 	knownTargetsSet := make(map[string]bool)
 	for _, target := range knownTargets {
 		if normalized, ok := normalizeHost(target); ok {
@@ -580,9 +555,11 @@ func extractSubdomains(urlsFile string, knownTargets []string) (int, int) {
 		}
 	}
 
-	subdomainsSet := make(map[string]bool)
-	subdomainsNewSet := make(map[string]bool)
-	for _, line := range strings.Split(string(content), "\n") {
+	subdomainsSet := readLinesAsSet(subdomainsFile)
+	subdomainsNewSet := readLinesAsSet(subdomainsNewFile)
+	prevCount := len(subdomainsNewSet)
+
+	for _, line := range inputURLs {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
@@ -600,37 +577,16 @@ func extractSubdomains(urlsFile string, knownTargets []string) (int, int) {
 		}
 	}
 
-	var subdomains []string
-	for host := range subdomainsSet {
-		subdomains = append(subdomains, host)
-	}
-	sort.Strings(subdomains)
+	writeSortedSet(subdomainsFile, subdomainsSet)
+	writeSortedSet(subdomainsNewFile, subdomainsNewSet)
 
-	var subdomainsNew []string
-	for host := range subdomainsNewSet {
-		subdomainsNew = append(subdomainsNew, host)
-	}
-	sort.Strings(subdomainsNew)
-
-	if len(subdomains) > 0 {
-		os.WriteFile(subdomainsFile, []byte(strings.Join(subdomains, "\n")+"\n"), 0644)
-	} else {
-		os.WriteFile(subdomainsFile, []byte{}, 0644)
-	}
-
-	if len(subdomainsNew) > 0 {
-		os.WriteFile(subdomainsNewFile, []byte(strings.Join(subdomainsNew, "\n")+"\n"), 0644)
-	} else {
-		os.WriteFile(subdomainsNewFile, []byte{}, 0644)
-	}
-
-	currentCount := len(subdomainsNew)
+	currentCount := len(subdomainsNewSet)
 	newCount := currentCount - prevCount
 	if newCount < 0 {
 		newCount = 0
 	}
 
-	return len(subdomains), newCount
+	return len(subdomainsSet), newCount
 }
 
 func sanitizeTargetName(target string) string {
@@ -747,10 +703,10 @@ func discovery(domain, folderName string, toolsArg string, verbose bool, quiet b
 	}
 	wg.Wait()
 
-	aggregateAndClean(toolFiles, urlsFile, oldGlobalCount, quiet)
+	newURLs := aggregateAndClean(toolFiles, urlsFile, oldGlobalCount, quiet)
 	if extractUnique {
 		printSectionBox("URL NORMALIZATION")
-		uniqueCount, newUniqueCount := extractUniqueURLs(urlsFile)
+		uniqueCount, newUniqueCount := extractUniqueURLs(urlsFile, newURLs)
 		uniqueLabel := fmt.Sprintf("%-12s", "URLS UNIQUE")
 		totalLabel := fmt.Sprintf("%8d urls", uniqueCount)
 
@@ -771,7 +727,7 @@ func discovery(domain, folderName string, toolsArg string, verbose bool, quiet b
 	}
 	if extractSubdomainsEnabled {
 		printSectionBox("SUBDOMAIN EXTRACTION")
-		subdomainsCount, newSubdomainsCount := extractSubdomains(urlsFile, knownTargets)
+		subdomainsCount, newSubdomainsCount := extractSubdomains(urlsFile, newURLs, knownTargets)
 		subdomainsLabel := fmt.Sprintf("%-12s", "SUBDOMAINS")
 		totalLabel := fmt.Sprintf("%8d subs", subdomainsCount)
 
@@ -792,7 +748,7 @@ func discovery(domain, folderName string, toolsArg string, verbose bool, quiet b
 	}
 	if extractJS {
 		printSectionBox("JAVASCRIPT EXTRACTION")
-		jsCount, newJSCount := extractJSURLs(urlsFile)
+		jsCount, newJSCount := extractJSURLs(urlsFile, newURLs)
 		jsLabel := fmt.Sprintf("%-12s", "JS UNIQUE")
 		totalLabel := fmt.Sprintf("%8d urls", jsCount)
 
