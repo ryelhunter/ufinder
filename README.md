@@ -139,6 +139,7 @@ ufinder -l targets.txt -f batch_output
 | `-J`, `--extract-js-from` | Read an existing URLs file and generate `js.txt` and `js_unique.txt` in the same directory |
 | `-U`, `--extract-normalized-urls-from` | Read an existing URLs file and generate `urls_unique.txt` in the same directory |
 | `-S`, `--extract-subdomains-from` | Read an existing URLs file and generate `subdomains.txt` and `subdomains_new.txt` in the same directory using seeds from `-d` or `-l` |
+| `--full` | Shortcut for the full batch workflow: quiet mode, derived files, merged output for `-l`, and default output `.` unless `-f` is provided |
 | `-f`, `--output` | Output folder |
 | `-m`, `--merge-targets` | When using `-l`, write all targets into the same output folder |
 | `-t`, `--tools` | Comma-separated tool list, for example `waymore,gau,gau_subs,urlscan` |
@@ -153,6 +154,24 @@ ufinder -l targets.txt -f batch_output
 Use either `-d`, `-l`, or one of the standalone post-processing modes `-J`, `-U`, or `-S`.
 
 ## Examples
+
+Main recommended batch command:
+
+```bash
+ufinder -l sites.txt --full
+```
+
+Equivalent expanded command:
+
+```bash
+ufinder -l sites.txt -f . -q -j -m -u -s
+```
+
+If you want the same full workflow in another output folder, `-f` still wins:
+
+```bash
+ufinder -l sites.txt --full -f batch_recon
+```
 
 Run all tools against one target:
 

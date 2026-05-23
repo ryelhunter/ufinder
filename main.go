@@ -1033,6 +1033,7 @@ func main() {
 	extractUniqueFromLong := flag.String("extract-normalized-urls-from", "", "Extract normalized URLs from an existing URLs file")
 	extractSubdomainsFrom := flag.String("S", "", "Extract subdomains from an existing URLs file")
 	extractSubdomainsFromLong := flag.String("extract-subdomains-from", "", "Extract subdomains from an existing URLs file")
+	full := flag.Bool("full", false, "Run the full batch workflow with quiet mode, merged output, and derived files")
 	folderName := flag.String("f", "", "Output folder")
 	folderNameLong := flag.String("output", "", "Output folder")
 	mergeTargets := flag.Bool("merge-targets", false, "Merge all targets from -l into the same output folder")
@@ -1091,6 +1092,7 @@ func main() {
 	restartEnabled := *restart || *restartShort
 	quietEnabled := *quiet || *quietShort
 	verboseEnabled := *verbose || *verboseLong
+	fullEnabled := *full
 
 	if resumeEnabled && restartEnabled {
 		color.Red("  ✖ Error: use either -r/--resume or -R/--restart, not both.")
@@ -1109,6 +1111,10 @@ func main() {
 	}
 	if fromModes > 1 {
 		color.Red("  ✖ Error: use only one of -J/--extract-js-from, -U/--extract-normalized-urls-from, or -S/--extract-subdomains-from.")
+		os.Exit(1)
+	}
+	if fullEnabled && fromModes > 0 {
+		color.Red("  ✖ Error: --full cannot be combined with standalone post-processing modes.")
 		os.Exit(1)
 	}
 
@@ -1178,12 +1184,26 @@ func main() {
 		return
 	}
 
+	if fullEnabled {
+		quietEnabled = true
+		extractSubdomainsEnabled = true
+		extractUniqueEnabled = true
+		extractJSEnabled = true
+		if listFileValue != "" {
+			mergeTargetsEnabled = true
+		}
+		if folderNameValue == "" {
+			folderNameValue = "."
+		}
+	}
+
 	if folderNameValue == "" || (domainValue == "" && listFileValue == "") || (domainValue != "" && listFileValue != "") {
 		// Mensagem de erro mais bonita
 		fmt.Println("")
 		color.Red("  ✖ Error: Invalid arguments.")
 		fmt.Println("  Usage: ufinder -d domain.com -f output_folder")
 		fmt.Println("         ufinder -l targets.txt -f output_folder")
+		fmt.Println("         ufinder -l sites.txt --full")
 		fmt.Println("         ufinder -J path/to/urls.txt")
 		fmt.Println("         ufinder -U path/to/urls.txt")
 		fmt.Println("         ufinder -S path/to/urls.txt -d domain.com")
