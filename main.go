@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -148,8 +149,33 @@ func normalizeUniqueURL(rawURL string) (string, bool) {
 	if path == "" {
 		path = "/"
 	}
+	if path != "/" {
+		path = strings.TrimRight(path, "/")
+		if path == "" {
+			path = "/"
+		}
+	}
 
 	return host + path, true
+}
+
+func isStaticAssetURL(normalizedURL string) bool {
+	parsed, err := url.Parse("https://" + normalizedURL)
+	if err != nil {
+		return false
+	}
+
+	trimmedPath := strings.TrimRight(strings.ToLower(parsed.EscapedPath()), "/")
+	if trimmedPath == "" {
+		return false
+	}
+
+	switch path.Ext(trimmedPath) {
+	case ".js", ".css", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".ico", ".woff", ".woff2", ".ttf", ".eot", ".map", ".mp4", ".mp3", ".avi", ".mov", ".webm":
+		return true
+	default:
+		return false
+	}
 }
 
 func normalizeHost(rawValue string) (string, bool) {
@@ -595,9 +621,10 @@ func extractUniqueFromFile(urlsFile string, quiet bool) error {
 
 	if !quiet {
 		uniqueFile := filepath.Join(filepath.Dir(urlsFile), "urls_unique.txt")
+		nonStaticFile := filepath.Join(filepath.Dir(urlsFile), "urls_unique_non_static.txt")
 		fmt.Printf("   %s Source: %s\n", iconSearch, color.HiWhiteString(urlsFile))
 		fmt.Printf("   %s Output: %s\n", iconBox, color.HiWhiteString(filepath.Dir(urlsFile)))
-		fmt.Printf("   %s Files : %s\n", iconCheck, color.HiWhiteString(filepath.Base(uniqueFile)))
+		fmt.Printf("   %s Files : %s, %s\n", iconCheck, color.HiWhiteString(filepath.Base(uniqueFile)), color.HiWhiteString(filepath.Base(nonStaticFile)))
 		fmt.Println("")
 	}
 
@@ -649,6 +676,7 @@ func extractSubdomainsFromFile(urlsFile string, knownTargets []string, quiet boo
 
 func extractUniqueURLs(urlsFile string, inputURLs []string) (int, int) {
 	uniqueFile := filepath.Join(filepath.Dir(urlsFile), "urls_unique.txt")
+	nonStaticFile := filepath.Join(filepath.Dir(urlsFile), "urls_unique_non_static.txt")
 	uniqueSet := readLinesAsSet(uniqueFile)
 	prevCount := len(uniqueSet)
 
@@ -663,6 +691,14 @@ func extractUniqueURLs(urlsFile string, inputURLs []string) (int, int) {
 	}
 
 	writeSortedSet(uniqueFile, uniqueSet)
+
+	nonStaticSet := make(map[string]bool, len(uniqueSet))
+	for normalized := range uniqueSet {
+		if !isStaticAssetURL(normalized) {
+			nonStaticSet[normalized] = true
+		}
+	}
+	writeSortedSet(nonStaticFile, nonStaticSet)
 
 	currentCount := len(uniqueSet)
 	newCount := currentCount - prevCount

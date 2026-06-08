@@ -7,6 +7,7 @@ UFinder is a powerful Go-based URL discovery and aggregation tool designed for s
 - **Multi-tool Orchestration**: Run multiple URL discovery tools from a single command
 - **Dual GAU Coverage**: Execute both `gau` and `gau --subs` by default
 - **Automatic Deduplication**: Filter and maintain unique URL collections in `urls.txt`
+- **Normalized URL Views**: Generate `urls_unique.txt` with trailing-slash-aware deduplication and `urls_unique_non_static.txt` for dynamic-looking endpoints
 - **Incremental Discovery**: Track new URLs discovered across multiple scans
 - **Batch Resume Support**: Resume target list runs automatically from the last completed target
 - **Comparative Analysis**: Preserve per-tool output files for comparison and follow-up analysis
@@ -137,7 +138,7 @@ ufinder -l targets.txt -f batch_output
 | `-d`, `--domain` | Single target domain |
 | `-l`, `--list` | Text file containing one target per line |
 | `-J`, `--extract-js-from` | Read an existing URLs file and generate `js.txt` and `js_unique.txt` in the same directory |
-| `-U`, `--extract-normalized-urls-from` | Read an existing URLs file and generate `urls_unique.txt` in the same directory |
+| `-U`, `--extract-normalized-urls-from` | Read an existing URLs file and generate `urls_unique.txt` and `urls_unique_non_static.txt` in the same directory, excluding `.js`, `.css`, images, fonts, sourcemaps, and common audio/video files from the non-static file |
 | `-S`, `--extract-subdomains-from` | Read an existing URLs file and generate `subdomains.txt` and `subdomains_new.txt` in the same directory using seeds from `-d` or `-l` |
 | `--full` | Shortcut for the full batch workflow: quiet mode, derived files, merged output for `-l`, and default output `.` unless `-f` is provided |
 | `-f`, `--output` | Output folder |
@@ -146,7 +147,7 @@ ufinder -l targets.txt -f batch_output
 | `-r`, `--resume` | Resume a `-l` batch using `.ufinder-resume.json` from the output folder |
 | `-R`, `--restart` | Restart a `-l` batch from the beginning and reset `.ufinder-resume.json` |
 | `-s`, `--extract-subdomains` | Extract discovered subdomains into `subdomains.txt` and newly discovered ones into `subdomains_new.txt` |
-| `-u`, `--extract-normalized-urls` | Extract normalized unique URLs into `urls_unique.txt` |
+| `-u`, `--extract-normalized-urls` | Extract normalized unique URLs into `urls_unique.txt` and non-static entries into `urls_unique_non_static.txt`, excluding `.js`, `.css`, images, fonts, sourcemaps, and common audio/video files |
 | `-j`, `--extract-js` | Extract JavaScript URLs into `js.txt` and normalized entries into `js_unique.txt` |
 | `-q`, `--quiet` | Hide the banner and the final per-URL list of new findings |
 | `-v`, `--verbose` | Verbose mode |
@@ -197,7 +198,7 @@ Generate `js.txt` and `js_unique.txt` later from an existing URLs file:
 ufinder -J batch_recon/endpoints/urls.txt
 ```
 
-Generate `urls_unique.txt` later from an existing URLs file:
+Generate `urls_unique.txt` and `urls_unique_non_static.txt` later from an existing URLs file:
 
 ```bash
 ufinder -U batch_recon/endpoints/urls.txt
@@ -339,7 +340,8 @@ output_directory/
     ├── urls.txt                # Master file with all unique URLs
     ├── subdomains.txt          # Discovered subdomains extracted from urls.txt
     ├── subdomains_new.txt      # Discovered subdomains that were not part of the input target set
-    ├── urls_unique.txt         # Normalized URLs without scheme, query strings, fragments, or default ports
+    ├── urls_unique.txt         # Normalized URLs without scheme, query strings, fragments, default ports, or duplicate trailing slashes
+    ├── urls_unique_non_static.txt # Normalized URLs excluding .js, .css, .png, .jpg, .jpeg, .gif, .svg, .webp, .ico, .woff, .woff2, .ttf, .eot, .map, .mp4, .mp3, .avi, .mov, and .webm
     ├── js.txt                  # JavaScript URLs extracted from urls.txt, including query-string variants
     ├── js_unique.txt           # Normalized JavaScript URLs without query strings or fragments
     ├── waymore.txt             # URLs found by waymore
@@ -375,7 +377,8 @@ output_directory/
     ├── urls.txt                # Master file with all unique URLs
     ├── subdomains.txt          # Discovered subdomains extracted from urls.txt
     ├── subdomains_new.txt      # Discovered subdomains that were not part of the input target set
-    ├── urls_unique.txt         # Normalized URLs without scheme, query strings, fragments, or default ports
+    ├── urls_unique.txt         # Normalized URLs without scheme, query strings, fragments, default ports, or duplicate trailing slashes
+    ├── urls_unique_non_static.txt # Normalized URLs excluding .js, .css, .png, .jpg, .jpeg, .gif, .svg, .webp, .ico, .woff, .woff2, .ttf, .eot, .map, .mp4, .mp3, .avi, .mov, and .webm
     ├── js.txt                  # JavaScript URLs extracted from urls.txt, including query-string variants
     ├── js_unique.txt           # Normalized JavaScript URLs without query strings or fragments
     ├── waymore.txt             # URLs found by waymore
